@@ -114,6 +114,10 @@ to text, and indexed alongside the public corpus.
 - Minimum **2s delay + jitter** between requests, **randomized browser user
   agents**, **3s timeout**, **max 2 retries** with exponential backoff. 4xx
   responses are not retried.
+- **Per-source timeout override (never global):** the BI-Rate pager endpoint
+  (`bi-rate.aspx`) uses **8s** instead of the global 3s, after its SharePoint
+  DataPager POSTs timed out twice at 3s during multi-window pagination. Every
+  other source stays at the 3s default.
 - An **allowlist** restricts fetching to `bi.go.id` hosts; the forbidden
   `pejuang.berkarirbi.id` host raises `ForbiddenSourceError`.
 - Only public, non-gated pages are accessed; BI content is used for personal

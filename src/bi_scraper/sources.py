@@ -44,6 +44,10 @@ SOURCES: tuple[Source, ...] = (
         "https://www.bi.go.id/id/statistik/indikator/bi-rate.aspx",
         KIND_BI_RATE_FORM,
         "date-range POST via TextBoxDateStart/End + ButtonSearch",
+        # Per-source override only (global stays 3s): the SharePoint DataPager
+        # POSTs on this endpoint timed out twice at the 3s default during
+        # multi-window pagination, so this source alone is allowed 8s.
+        timeout=8.0,
     ),
     Source(2, "JISDOR", "https://www.bi.go.id/id/statistik/informasi-kurs/jisdor", KIND_TABLE_PAGE),
     Source(2, "Kurs Transaksi BI", "https://www.bi.go.id/id/statistik/informasi-kurs/transaksi-bi", KIND_PAGE),

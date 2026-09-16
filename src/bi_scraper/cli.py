@@ -139,10 +139,11 @@ def _fetch_source(
             start=start,
             end=end,
             summary=summary,
+            timeout=source.timeout,
         )
         return
 
-    response = client.get(source.url)  # type: ignore[attr-defined]
+    response = client.get(source.url, timeout=source.timeout)  # type: ignore[attr-defined]
     if response.status_code != 200:
         raise RuntimeError(f"HTTP {response.status_code}")
     raw_path = save_raw(settings.raw_dir, chapter.id, source.url, response.content)
@@ -150,12 +151,10 @@ def _fetch_source(
     if source.kind == KIND_PRESS_RELEASE:
         metas = parse_press_release_listing(response.text, base_url=source.url)
         for meta in metas:
-            if meta.date is not None:
-                if not (start <= meta.date <= end):
-                    continue
-            elif not full:
-                # undated listing entries are only re-collected on explicit --full
+            if meta.date is not None and not (start <= meta.date <= end):
                 continue
+            # Undated listing entries are always collected: INSERT OR IGNORE on
+            # the content hash keeps repeated runs idempotent.
             store.add_document(
                 chapter=chapter.id,
                 url=meta.url,
@@ -204,8 +203,9 @@ def _fetch_bi_rate_form(
     start: date,
     end: date,
     summary: FetchSummary,
+    timeout: float | None = None,
 ) -> None:
-    response = client.get(source.url)  # type: ignore[attr-defined]
+    response = client.get(source.url, timeout=timeout)  # type: ignore[attr-defined]
     if response.status_code != 200:
         raise RuntimeError(f"HTTP {response.status_code}")
     save_raw(settings.raw_dir, chapter.id, source.url, response.content)
@@ -216,13 +216,13 @@ def _fetch_bi_rate_form(
     page_number = 0
     while page_number < settings.max_pages:
         if page_number == 0:
-            page_response = client.post(source.url, data=payload)  # type: ignore[attr-defined]
+            page_response = client.post(source.url, data=payload, timeout=timeout)  # type: ignore[attr-defined]
         else:
             target = find_next_page_target(html)
             if not target:
                 break
             page_response = client.post(  # type: ignore[attr-defined]
-                source.url, data=build_page_payload(state, target)
+                source.url, data=build_page_payload(state, target), timeout=timeout
             )
         if page_response.status_code != 200:
             raise RuntimeError(f"HTTP {page_response.status_code} on page {page_number + 1}")
@@ -420,15 +420,17 @@ def coverage() -> None:
     finally:
         store.close()
     typer.echo(f"Freshness horizon: {settings.horizon_days} days (chapter 7 is report-only)")
-    typer.echo("chapter                     | docs | newest     | fetched-at           | status")
+    typer.echo(
+        "chapter                     | docs | fb | newest     | fetched-at           | status"
+    )
     for status in statuses:
         newest = status.newest_date.isoformat() if status.newest_date else "-"
         fetched = status.last_fetch_at or "-"
         flag = " [NEWER-THAN-SYLLABUS]" if status.newer_than_syllabus else ""
         label = f"ch{status.chapter.id} {status.chapter.name}"
         typer.echo(
-            f"{label:<27} | {status.doc_count:>4} | {newest:<10} | "
-            f"{fetched:<20} | {status.status}{flag}"
+            f"{label:<27} | {status.doc_count:>4} | {status.fallback_docs:>2} | "
+            f"{newest:<10} | {fetched:<20} | {status.status}{flag}"
         )
     failures = coverage_failures(statuses)
     if failures:

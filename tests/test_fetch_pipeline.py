@@ -10,9 +10,14 @@ from datetime import date
 import httpx
 
 from bi_scraper.chapter_map import get_chapter
-from bi_scraper.cli import FetchSummary, _fetch_bi_rate_form, run_fetch
+from bi_scraper.cli import FetchSummary, _fetch_bi_rate_form, _fetch_source, run_fetch
 from bi_scraper.http_client import AllowAllRobots, PoliteClient
-from bi_scraper.sources import KIND_BI_RATE_FORM, sources_for_chapter
+from bi_scraper.sources import (
+    KIND_BI_RATE_FORM,
+    KIND_PRESS_RELEASE,
+    Source,
+    sources_for_chapter,
+)
 
 
 def _offline_client(settings, handler) -> PoliteClient:
@@ -145,3 +150,71 @@ def test_run_fetch_full_ignores_stored_newest(store, settings, fixture_text):
     assert calls["count"] == 3
     assert summaries[0].mode == "full"
     assert summaries[0].start == "2016-01-01"
+
+
+def test_report_listing_collects_in_range_and_undated_items(store, settings, fixture_text):
+    """Report-listing fix: media-card items are parsed; undated ones collected."""
+
+    source = Source(
+        chapter=4,
+        name="Laporan BI",
+        url="https://www.bi.go.id/id/publikasi/laporan/default.aspx",
+        kind=KIND_PRESS_RELEASE,
+    )
+    html = fixture_text("report_list.html")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=html)
+
+    summary = FetchSummary(
+        chapter=4, name=source.name, mode="incremental", start="2026-09-01", end="2026-09-17"
+    )
+    _fetch_source(
+        store=store,
+        settings=settings,
+        client=_offline_client(settings, handler),
+        source=source,
+        chapter=get_chapter(4),
+        start=date(2026, 9, 1),
+        end=date(2026, 9, 17),
+        full=False,
+        summary=summary,
+    )
+    assert summary.fetched == 2  # 14 Sep in range + undated; 21 Aug out of range
+    titles = {
+        row["title"]
+        for row in store.documents_for_chapter(4, source_type="public")
+    }
+    assert "Laporan Kelembagaan Bank Indonesia Triwulan II - 2026" in titles
+    assert "Kajian Stabilitas Keuangan (bulanan berjalan)" in titles
+    assert all("Responsif Gender" not in title for title in titles)
+
+
+def test_report_listing_is_idempotent_across_incremental_runs(store, settings, fixture_text):
+    source = Source(
+        chapter=4,
+        name="Laporan BI",
+        url="https://www.bi.go.id/id/publikasi/laporan/default.aspx",
+        kind=KIND_PRESS_RELEASE,
+    )
+    html = fixture_text("report_list.html")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=html)
+
+    for _ in range(2):
+        summary = FetchSummary(
+            chapter=4, name=source.name, mode="incremental", start="2026-09-01", end="2026-09-17"
+        )
+        _fetch_source(
+            store=store,
+            settings=settings,
+            client=_offline_client(settings, handler),
+            source=source,
+            chapter=get_chapter(4),
+            start=date(2026, 9, 1),
+            end=date(2026, 9, 17),
+            full=False,
+            summary=summary,
+        )
+    assert store.doc_count(4, source_type="public") == 2

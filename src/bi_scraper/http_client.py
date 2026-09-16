@@ -163,19 +163,27 @@ class PoliteClient:
         method: str = "GET",
         data: dict[str, str] | None = None,
         user_agent: str | None = None,
+        timeout: float | None = None,
     ) -> httpx.Response:
         """Single polite attempt (used by the robots gate and by ``request``)."""
 
         self._throttle()
+        kwargs = {} if timeout is None else {"timeout": timeout}
         return self._client.request(
             method,
             url,
             headers={"User-Agent": user_agent or self.user_agent()},
             data=data,
+            **kwargs,
         )
 
     def request(
-        self, method: str, url: str, *, data: dict[str, str] | None = None
+        self,
+        method: str,
+        url: str,
+        *,
+        data: dict[str, str] | None = None,
+        timeout: float | None = None,
     ) -> httpx.Response:
         """Fetch with robots check, retries and exponential backoff."""
 
@@ -187,7 +195,7 @@ class PoliteClient:
         while True:
             try:
                 response = self.fetch_raw(
-                    url, method=method, data=data, user_agent=agent
+                    url, method=method, data=data, user_agent=agent, timeout=timeout
                 )
             except (httpx.TimeoutException, httpx.TransportError):
                 if attempt >= self.settings.max_retries:
@@ -198,8 +206,10 @@ class PoliteClient:
             self._sleep(2.0**attempt)
             attempt += 1
 
-    def get(self, url: str) -> httpx.Response:
-        return self.request("GET", url)
+    def get(self, url: str, timeout: float | None = None) -> httpx.Response:
+        return self.request("GET", url, timeout=timeout)
 
-    def post(self, url: str, data: dict[str, str]) -> httpx.Response:
-        return self.request("POST", url, data=data)
+    def post(
+        self, url: str, data: dict[str, str], timeout: float | None = None
+    ) -> httpx.Response:
+        return self.request("POST", url, data=data, timeout=timeout)

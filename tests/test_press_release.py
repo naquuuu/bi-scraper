@@ -33,3 +33,32 @@ def test_listing_ignores_navigation_links():
     """
     metas = parse_press_release_listing(html)
     assert metas == []
+
+
+def test_report_listing_box_list_markup(fixture_text):
+    """New markup (report listings): empty box-list anchors inside media cards."""
+
+    metas = parse_press_release_listing(
+        fixture_text("report_list.html"),
+        base_url="https://www.bi.go.id/id/publikasi/laporan/default.aspx",
+    )
+    assert len(metas) == 3
+    first = metas[0]
+    assert first.date == date(2026, 9, 14)
+    assert first.title == "Laporan Kelembagaan Bank Indonesia Triwulan II - 2026"
+    assert first.doc_type == "page"
+    assert first.url == (
+        "https://www.bi.go.id/id/publikasi/laporan/Pages/LKBI-Tw.II-2026.aspx"
+    )
+    assert metas[1].date == date(2026, 8, 21)
+    assert metas[1].url.startswith("https://www.bi.go.id/id/publikasi/kajian/Pages/")
+    assert metas[2].date is None
+    assert metas[2].title == "Kajian Stabilitas Keuangan (bulanan berjalan)"
+
+
+def test_report_listing_excludes_filter_links():
+    html = """
+    <div class="media"><a href="/id/publikasi/laporan/default.aspx?Kategori=x&amp;Periode="
+        class="box-list__hyperlink"></a></div>
+    """
+    assert parse_press_release_listing(html) == []

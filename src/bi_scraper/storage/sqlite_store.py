@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS documents (
     url TEXT NOT NULL,
     title TEXT NOT NULL,
     doc_date TEXT,
+    date_source TEXT NOT NULL DEFAULT 'parsed'
+        CHECK (date_source IN ('parsed', 'fetch_fallback')),
     fetched_at TEXT NOT NULL,
     source_type TEXT NOT NULL CHECK (source_type IN ('public', 'my-notes')),
     doc_kind TEXT NOT NULL,
@@ -95,7 +97,24 @@ class StudyStore:
         self.conn = sqlite3.connect(str(self.path))
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        self._migrate()
         self._seed_chapters()
+        self.conn.commit()
+
+    def _migrate(self) -> None:
+        """Idempotent upgrades for databases created by earlier versions."""
+
+        columns = {row["name"] for row in self.conn.execute("PRAGMA table_info(documents)")}
+        if "date_source" not in columns:
+            self.conn.execute(
+                "ALTER TABLE documents ADD COLUMN date_source TEXT NOT NULL DEFAULT 'parsed'"
+            )
+            # Old rows without a parsed date were displayed with the fetch date:
+            # mark them as fallback so the freshness gate ignores them.
+            self.conn.execute(
+                "UPDATE documents SET date_source = 'fetch_fallback' "
+                "WHERE doc_date IS NULL AND source_type = 'public'"
+            )
         self.conn.commit()
 
     def close(self) -> None:
@@ -135,25 +154,33 @@ class StudyStore:
         source_type: str = "public",
         doc_kind: str = "web_page",
         doc_date: str | None = None,
+        date_source: str | None = None,
         fetched_at: str | None = None,
         raw_path: str | None = None,
     ) -> bool:
-        """Insert a document; returns ``True`` when a new row was stored."""
+        """Insert a document; returns ``True`` when a new row was stored.
+
+        ``date_source`` is derived: ``parsed`` when a real publish date was
+        extracted, ``fetch_fallback`` when only the fetch timestamp is shown.
+        """
 
         fetched_at = fetched_at or utcnow_iso()
+        if date_source is None:
+            date_source = "parsed" if doc_date else "fetch_fallback"
         digest = self.content_hash(title, content)
         cursor = self.conn.execute(
             """
             INSERT OR IGNORE INTO documents
-                (chapter, url, title, doc_date, fetched_at, source_type,
-                 doc_kind, raw_path, content, content_hash)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (chapter, url, title, doc_date, date_source, fetched_at,
+                 source_type, doc_kind, raw_path, content, content_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 chapter,
                 url,
                 title,
                 doc_date,
+                date_source,
                 fetched_at,
                 source_type,
                 doc_kind,
@@ -227,6 +254,41 @@ class StudyStore:
         except ValueError:
             return None
 
+    def newest_real_date(self, chapter: int) -> date | None:
+        """Newest public document with a **parsed** publish date.
+
+        Fetch-fallback rows are excluded: they carry no real date evidence and
+        must not drive the freshness gate or the NEWER-THAN-SYLLABUS flag.
+        """
+
+        row = self.conn.execute(
+            """
+            SELECT MAX(doc_date)
+            FROM documents
+            WHERE chapter = ? AND source_type = 'public' AND date_source = 'parsed'
+            """,
+            (chapter,),
+        ).fetchone()
+        if row is None or row[0] is None:
+            return None
+        try:
+            return date.fromisoformat(str(row[0]))
+        except ValueError:
+            return None
+
+    def fallback_doc_count(self, chapter: int) -> int:
+        """Public documents whose displayed date is only the fetch timestamp."""
+
+        row = self.conn.execute(
+            """
+            SELECT COUNT(*) FROM documents
+            WHERE chapter = ? AND source_type = 'public'
+              AND date_source = 'fetch_fallback'
+            """,
+            (chapter,),
+        ).fetchone()
+        return int(row[0]) if row else 0
+
     def count_documents(self) -> int:
         row = self.conn.execute("SELECT COUNT(*) FROM documents").fetchone()
         return int(row[0]) if row else 0
@@ -277,9 +339,12 @@ class StudyStore:
                     c.syllabus_date,
                     (SELECT COUNT(*) FROM documents d
                      WHERE d.chapter = c.id AND d.source_type = 'public') AS doc_count,
-                    (SELECT MAX(COALESCE(d.doc_date, substr(d.fetched_at, 1, 10)))
-                     FROM documents d
-                     WHERE d.chapter = c.id AND d.source_type = 'public') AS newest_date,
+                    (SELECT MAX(d.doc_date) FROM documents d
+                     WHERE d.chapter = c.id AND d.source_type = 'public'
+                       AND d.date_source = 'parsed') AS newest_real_date,
+                    (SELECT COUNT(*) FROM documents d
+                     WHERE d.chapter = c.id AND d.source_type = 'public'
+                       AND d.date_source = 'fetch_fallback') AS fallback_count,
                     (SELECT f.last_fetch_at FROM fetch_log f
                      WHERE f.chapter = c.id) AS last_fetch_at
                 FROM chapters c

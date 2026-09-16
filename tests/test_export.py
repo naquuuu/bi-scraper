@@ -29,10 +29,24 @@ def test_notebook_header_flags_and_my_notes(store, settings):
     path = export_notebook(store, get_chapter(2), settings)
     text = path.read_text(encoding="utf-8")
     assert "Fetched-At:" in text
-    assert "Chapter newest public doc date: 2026-09-16" in text
+    assert "Chapter newest dated public doc: 2026-09-16" in text
     assert "[NEWER-THAN-SYLLABUS]" in text  # ch2 syllabus pin: 2026-07-18
     assert "Ringkasan saya" in text
     assert "https://www.bi.go.id/id/publikasi/x" in text
+
+
+def test_fallback_only_chapter_reports_honest_unknown(store, settings):
+    store.add_document(
+        chapter=5,
+        url="https://www.bi.go.id/id/fungsi-utama/sistem-pembayaran/page",
+        title="Page doc",
+        content="page text",
+    )
+    path = export_notebook(store, get_chapter(5), settings)
+    text = path.read_text(encoding="utf-8")
+    assert "HONEST-UNKNOWN" in text
+    assert "[NEWER-THAN-SYLLABUS]" not in text
+    assert "freshness unknown" in text
 
 
 def test_portfolio_excludes_verbatim_and_renders_chart(store, settings):

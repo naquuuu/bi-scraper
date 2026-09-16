@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from bi_scraper.storage.sqlite_store import StudyStore
+
 
 def test_add_search_and_snippet(store):
     inserted = store.add_document(
@@ -74,3 +76,87 @@ def test_count_documents(store):
     assert store.count_documents() == 0
     store.add_document(chapter=1, url="https://x", title="t", content="c")
     assert store.count_documents() == 1
+
+
+def test_date_source_derivation_and_real_date_exclusion(store):
+    store.add_document(chapter=2, url="https://dated", title="dated", doc_date="2026-08-19")
+    store.add_document(chapter=2, url="https://undated", title="undated")
+    rows = {row["url"]: row for row in store.documents_for_chapter(2)}
+    assert rows["https://dated"]["date_source"] == "parsed"
+    assert rows["https://undated"]["date_source"] == "fetch_fallback"
+    assert store.newest_real_date(2).isoformat() == "2026-08-19"
+    assert store.fallback_doc_count(2) == 1
+
+
+def test_newest_real_date_none_when_only_fallback(store):
+    store.add_document(chapter=5, url="https://page", title="page doc")
+    assert store.newest_real_date(5) is None
+    assert store.fallback_doc_count(5) == 1
+
+
+def test_migration_backfills_date_source_on_legacy_db(tmp_path):
+    import sqlite3
+
+    legacy = tmp_path / "legacy.db"
+    conn = sqlite3.connect(legacy)
+    conn.executescript(
+        """
+        CREATE TABLE documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chapter INTEGER NOT NULL,
+            url TEXT NOT NULL,
+            title TEXT NOT NULL,
+            doc_date TEXT,
+            fetched_at TEXT NOT NULL,
+            source_type TEXT NOT NULL,
+            doc_kind TEXT NOT NULL,
+            raw_path TEXT,
+            content TEXT NOT NULL DEFAULT '',
+            content_hash TEXT NOT NULL,
+            UNIQUE (chapter, url, content_hash)
+        );
+        CREATE VIRTUAL TABLE documents_fts USING fts5(
+            title, content, content='documents', content_rowid='id',
+            tokenize='unicode61'
+        );
+        CREATE TRIGGER documents_ai AFTER INSERT ON documents BEGIN
+            INSERT INTO documents_fts(rowid, title, content)
+            VALUES (new.id, new.title, new.content);
+        END;
+        CREATE TRIGGER documents_ad AFTER DELETE ON documents BEGIN
+            INSERT INTO documents_fts(documents_fts, rowid, title, content)
+            VALUES ('delete', old.id, old.title, old.content);
+        END;
+        CREATE TRIGGER documents_au AFTER UPDATE ON documents BEGIN
+            INSERT INTO documents_fts(documents_fts, rowid, title, content)
+            VALUES ('delete', old.id, old.title, old.content);
+            INSERT INTO documents_fts(rowid, title, content)
+            VALUES (new.id, new.title, new.content);
+        END;
+        """
+    )
+    # Simulate a row written through the old add_document: FTS index in sync.
+    conn.execute(
+        "INSERT INTO documents (chapter, url, title, doc_date, fetched_at, "
+        "source_type, doc_kind, content, content_hash) "
+        "VALUES (5, 'https://legacy', 'page', NULL, '2026-01-01T00:00:00Z', "
+        "'public', 'web_page', '', 'h1')"
+    )
+    rowid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO documents_fts(rowid, title, content) VALUES (?, 'page', '')",
+        (rowid,),
+    )
+    conn.commit()
+    conn.close()
+
+    store = StudyStore(legacy)
+    try:
+        row = store.conn.execute(
+            "SELECT date_source FROM documents WHERE url = 'https://legacy'"
+        ).fetchone()
+        assert row["date_source"] == "fetch_fallback"
+        assert store.newest_real_date(5) is None
+        assert len(store.search("page")) == 1  # FTS stays consistent after migration
+    finally:
+        store.close()

@@ -3,6 +3,12 @@
 
 Metadata only: ``{date, title, url, doc_type}``. PDFs are never downloaded and
 no PDF-secure / login / paywall protection is ever touched.
+
+Supported listing markups (both verified on public bi.go.id pages):
+- news-release style: text anchors to ``/news-release/Pages/*.aspx`` or PDFs;
+- report style (Laporan/Kajian): empty ``a.box-list__hyperlink`` anchors to
+  ``/publikasi/{laporan,kajian}/Pages/*.aspx`` whose title/date live in the
+  surrounding ``.media`` card (``.media__title`` / ``.media__subtitle``).
 """
 
 from __future__ import annotations
@@ -14,6 +20,17 @@ from bs4 import BeautifulSoup
 
 from .bi_rate import BI_BASE_URL, normalise_href, parse_period
 
+_REPORT_LISTING_SECTIONS = ("/publikasi/laporan/pages/", "/publikasi/kajian/pages/")
+_GENERIC_ANCHOR_TEXTS = {
+    "tautan berikut",
+    "link ini",
+    "lihat",
+    "unduh",
+    "download",
+    "disini",
+    "di sini",
+}
+
 
 @dataclass(frozen=True)
 class PressReleaseMeta:
@@ -24,10 +41,15 @@ class PressReleaseMeta:
 
 
 def _is_publication_url(url: str) -> bool:
-    if ".pdf" in url.lower():
-        return True
     lowered = url.lower()
-    return "/news-release/pages/" in lowered and lowered.endswith(".aspx")
+    if ".pdf" in lowered:
+        return True
+    if not lowered.endswith(".aspx"):
+        # Excludes hub/filter links such as default.aspx?Kategori=...
+        return False
+    if "/news-release/pages/" in lowered:
+        return True
+    return any(section in lowered for section in _REPORT_LISTING_SECTIONS)
 
 
 def parse_press_release_listing(
@@ -41,16 +63,25 @@ def parse_press_release_listing(
         url = normalise_href(str(anchor["href"]), base_url)
         if not _is_publication_url(url):
             continue
-        title = anchor.get_text(" ", strip=True)
         container = anchor.find_parent(["li", "article", "div", "tr"]) or anchor
         context = container.get_text(" ", strip=True)
         doc_date = parse_period(context)
+
+        title = ""
+        media_title = container.select_one(".media__title")
+        if media_title is not None:
+            title = media_title.get_text(" ", strip=True)
+        if len(title) < 4:
+            title = anchor.get_text(" ", strip=True)
+        if title.strip().lower() in _GENERIC_ANCHOR_TEXTS:
+            title = ""
         if len(title) < 4:
             heading = container.find(["h2", "h3", "h4", "h5"])
             if heading is not None:
                 title = heading.get_text(" ", strip=True)
         if len(title) < 4:
             title = url.rsplit("/", 1)[-1]
+
         if url in found:
             continue
         found[url] = PressReleaseMeta(

@@ -25,6 +25,9 @@ class Source:
     url: str
     kind: str
     notes: str = ""
+    # Per-source timeout override (seconds). Keep None unless a specific source
+    # repeatedly times out; never raise the global timeout.
+    timeout: float | None = None
 
 
 SOURCES: tuple[Source, ...] = (

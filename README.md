@@ -77,10 +77,14 @@ course version yet).
    refetch the whole range (default full start: `2016-01-01`).
 3. Rankings in exports/search are **newest-first**.
 4. Every study-pack header prints `Fetched-At` plus the per-chapter newest
-   document date.
-5. `coverage` **FAILS** any chapter whose newest public document is older than
-   **60 days** — except chapter 7, which is report-only by design. Exit code is
-   `1` when any chapter fails.
+   **parsed publish date**; chapters without parsed dates are labeled
+   `HONEST-UNKNOWN` with their fetch-fallback count.
+5. `coverage` gates on **real dates only**. Fetch-fallback timestamps (shown
+   when no publish date could be parsed) are excluded from both the 60-day gate
+   and the `[NEWER-THAN-SYLLABUS]` flag. Chapters whose only evidence is
+   fallback report `HONEST-UNKNOWN` (not a failure); never-fetched chapters
+   still **FAIL**. Chapter 7 is report-only by design. Exit code is `1` when any
+   chapter is `STALE`.
 
 ## Storage
 

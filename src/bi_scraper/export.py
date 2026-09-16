@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .chapter_map import Chapter
 from .config import Settings
-from .freshness import CoverageStatus, evaluate_chapter
+from .freshness import STATUS_UNKNOWN, CoverageStatus, evaluate_chapter
 from .storage.sqlite_store import StudyStore
 
 OWNERSHIP_NOTEBOOK = "public-derived metadata + my-notes text"
@@ -26,15 +26,26 @@ def _slug(value: str) -> str:
 
 def _chapter_status(store: StudyStore, chapter: Chapter, settings: Settings, now: datetime | None) -> CoverageStatus:
     today = (now or datetime.now()).date()
-    newest = store.newest_public_date(chapter.id)
     return evaluate_chapter(
         chapter,
         doc_count=store.doc_count(chapter.id, source_type="public"),
-        newest_date=newest,
+        fallback_docs=store.fallback_doc_count(chapter.id),
+        newest_date=store.newest_real_date(chapter.id),
         last_fetch_at=store.last_fetch_at(chapter.id),
         today=today,
         horizon_days=settings.horizon_days,
     )
+
+
+def _newest_date_text(status: CoverageStatus) -> str:
+    if status.newest_date is not None:
+        return status.newest_date.isoformat()
+    if status.fallback_docs:
+        return (
+            f"HONEST-UNKNOWN ({status.fallback_docs} undated doc(s); "
+            "fetch-fallback dates excluded from the gate)"
+        )
+    return "HONEST-UNKNOWN (no dated docs)"
 
 
 def _header_lines(status: CoverageStatus, settings: Settings) -> list[str]:
@@ -43,13 +54,13 @@ def _header_lines(status: CoverageStatus, settings: Settings) -> list[str]:
         f"# Chapter {chapter.id} -- {chapter.name}",
         "",
         f"- Fetched-At: {status.last_fetch_at or 'never'}",
-        f"- Chapter newest public doc date: {status.newest_date.isoformat() if status.newest_date else 'none'}",
+        f"- Chapter newest dated public doc: {_newest_date_text(status)}",
         f"- Syllabus pin: {chapter.syllabus_version} ({chapter.syllabus_date})",
         f"- Freshness: {status.status} (horizon {settings.horizon_days} days)",
     ]
     if status.newer_than_syllabus:
         lines.append(
-            "- [NEWER-THAN-SYLLABUS] newest document postdates the pinned syllabus version"
+            "- [NEWER-THAN-SYLLABUS] newest dated document postdates the pinned syllabus version"
         )
     return lines
 
@@ -61,9 +72,14 @@ def _warning_lines(status: CoverageStatus) -> list[str]:
             "thin coverage expected: this chapter uses general public sources only "
             "(course material is read in-browser and is never scraped)"
         )
+    if status.status == STATUS_UNKNOWN:
+        warnings.append(
+            "freshness unknown: no parsed publish dates in this chapter "
+            "(fetch-fallback dates are excluded from the gate)"
+        )
     if status.stale:
         warnings.append(
-            "STALE: newest public document is older than the freshness horizon"
+            "STALE: newest parsed public document is older than the freshness horizon"
         )
     if status.doc_count < MIN_THIN_DOCS:
         warnings.append(f"thin coverage: only {status.doc_count} public document(s) indexed")

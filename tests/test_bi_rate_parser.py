@@ -17,6 +17,8 @@ from bi_scraper.parsers.bi_rate import (
 )
 
 TARGET = "ctl00$ctl54$g_2cf3ee94_31d3_4970_bba5_ec3766a63c9a$ctl00$DataPagerBI7DRR$ctl01$ctl01"
+GAP_TO_WINDOW2 = "ctl00$ctl54$g_2cf3ee94_31d3_4970_bba5_ec3766a63c9a$ctl00$DataPagerBI7DRR$ctl01$ctl05"
+GAP_TO_WINDOW3 = "ctl00$ctl54$g_2cf3ee94_31d3_4970_bba5_ec3766a63c9a$ctl00$DataPagerBI7DRR$ctl02$ctl05"
 
 
 def test_extract_form_state_resolves_real_control_names(fixture_text):
@@ -88,6 +90,30 @@ def test_parse_rate_rows_with_bi7day_column_present():
 
 def test_find_next_page_target(fixture_text):
     assert find_next_page_target(fixture_text("bi_rate_form.html")) == TARGET
+
+
+def test_find_next_page_target_window1_prefers_visible_number(fixture_text):
+    assert find_next_page_target(fixture_text("bi_rate_page_window1.html")) == TARGET
+
+
+def test_find_next_page_target_window1_follows_trailing_ellipsis(fixture_text):
+    html = fixture_text("bi_rate_page_window1.html").replace(
+        'class="page-link--custom active">1</span>',
+        'class="page-link--custom active">5</span>',
+    )
+    assert find_next_page_target(html) == GAP_TO_WINDOW2
+
+
+def test_find_next_page_target_window2_prefers_visible_number(fixture_text):
+    assert find_next_page_target(fixture_text("bi_rate_page_window2.html")) == TARGET
+
+
+def test_find_next_page_target_window2_follows_trailing_ellipsis(fixture_text):
+    html = fixture_text("bi_rate_page_window2.html").replace(
+        'class="page-link--custom active">6</span>',
+        'class="page-link--custom active">10</span>',
+    )
+    assert find_next_page_target(html) == GAP_TO_WINDOW3
 
 
 def test_find_next_page_target_none_without_pagination():

@@ -190,6 +190,38 @@ def test_report_listing_collects_in_range_and_undated_items(store, settings, fix
     assert all("Responsif Gender" not in title for title in titles)
 
 
+def test_bi_rate_form_paginates_across_pager_windows(store, settings, fixture_text):
+    settings = dataclasses.replace(settings, max_pages=2)
+    source = sources_for_chapter(2)[0]
+    window1 = fixture_text("bi_rate_page_window1.html")
+    window2 = fixture_text("bi_rate_page_window2.html")
+    calls = {"get": 0, "post": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            calls["get"] += 1
+            return httpx.Response(200, text=window1)
+        calls["post"] += 1
+        return httpx.Response(200, text=window1 if calls["post"] == 1 else window2)
+
+    summary = FetchSummary(
+        chapter=2, name=source.name, mode="full", start="2021-01-01", end="2026-12-31"
+    )
+    _fetch_bi_rate_form(
+        store=store,
+        settings=settings,
+        client=_offline_client(settings, handler),
+        source=source,
+        chapter=get_chapter(2),
+        start=date(2021, 1, 1),
+        end=date(2026, 12, 31),
+        summary=summary,
+    )
+    assert calls["post"] == 2  # search + one DataPager jump; max_pages cap stops the loop
+    periods = [row["period"] for row in store.indicator_series(2, "BI-Rate")]
+    assert periods == ["2022-01-15", "2022-02-15", "2026-01-15", "2026-02-19"]
+
+
 def test_report_listing_is_idempotent_across_incremental_runs(store, settings, fixture_text):
     source = Source(
         chapter=4,

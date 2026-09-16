@@ -235,34 +235,54 @@ def parse_rate_rows(html: str, base_url: str = BI_BASE_URL) -> list[RateRow]:
 
 
 def find_next_page_target(html: str) -> str | None:
-    """Find the ``DataPager`` target for the next results page, if any."""
+    """Find the ``DataPager`` target for the next results page, if any.
+
+    Multi-window pagers are followed: directly visible next page numbers win,
+    otherwise the ellipsis anchor that follows the last visible page number is
+    used to jump to the next pager window. The real "..." anchor carries no CSS
+    class, so anchors are matched by their ``__doPostBack`` href alone.
+    """
 
     soup = BeautifulSoup(html, "lxml")
-    active_el = soup.select_one(".pagination .page-link--custom.active") or soup.select_one(
-        ".page-link--custom.active"
-    )
+    active_el = soup.select_one(
+        ".pagination .page-link--custom.active"
+    ) or soup.select_one(".page-link--custom.active")
     active: int | None = None
     if active_el is not None:
         digits = re.sub(r"\D", "", active_el.get_text())
         active = int(digits) if digits else None
 
-    numeric: list[tuple[int, str]] = []
-    ellipsis_target: str | None = None
-    for anchor in soup.select("a.pagination-list"):
+    ordered: list[tuple[str, int]] = []  # (kind, index into pages/gaps)
+    pages: list[tuple[int, str]] = []
+    gaps: list[str] = []
+    for anchor in soup.find_all("a", href=True):
         match = _POSTBACK_RE.search(str(anchor.get("href") or ""))
         if not match:
             continue
         text = anchor.get_text(strip=True)
         if text.isdigit():
-            numeric.append((int(text), match.group(1)))
+            pages.append((int(text), match.group(1)))
+            ordered.append(("page", len(pages) - 1))
         elif text in {"...", "..", "…"}:
-            ellipsis_target = match.group(1)
+            gaps.append(match.group(1))
+            ordered.append(("gap", len(gaps) - 1))
 
     if active is not None:
-        newer = [item for item in numeric if item[0] > active]
+        newer = [item for item in pages if item[0] > active]
         if newer:
             return min(newer, key=lambda item: item[0])[1]
-        return ellipsis_target
-    if numeric:
-        return min(numeric, key=lambda item: item[0])[1]
-    return ellipsis_target
+        # No visible next number: jump forward via the gap that follows the
+        # last visible page number (the trailing "..." of the pager window).
+        last_page_pos = max(
+            (pos for pos, (kind, _) in enumerate(ordered) if kind == "page"),
+            default=None,
+        )
+        if last_page_pos is not None:
+            for kind, index in ordered[last_page_pos + 1:]:
+                if kind == "gap":
+                    return gaps[index]
+        return gaps[-1] if gaps else None
+
+    if pages:
+        return min(pages, key=lambda item: item[0])[1]
+    return gaps[-1] if gaps else None

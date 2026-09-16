@@ -20,6 +20,7 @@ from .freshness import coverage_failures, coverage_statuses
 from .http_client import PoliteClient
 from .inbox import ingest_inbox as _ingest_inbox
 from .parsers.bi_rate import (
+    RateFormError,
     build_page_payload,
     build_search_payload,
     extract_form_state,
@@ -227,6 +228,12 @@ def _fetch_bi_rate_form(
         if page_response.status_code != 200:
             raise RuntimeError(f"HTTP {page_response.status_code} on page {page_number + 1}")
         html = page_response.text
+        try:
+            # Refresh hidden fields (ViewState/EventValidation) from the current
+            # page, mirroring what a browser submits for the next DataPager click.
+            state = extract_form_state(html)
+        except RateFormError:
+            pass
         rows = parse_rate_rows(html, base_url=source.url)
         if not rows:
             break

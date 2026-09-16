@@ -11,12 +11,12 @@ from urllib.parse import urlparse
 _SAFE_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
-def _slug_from_url(url: str) -> str:
+def _slug_from_url(url: str, default_suffix: str = ".html") -> str:
     path = urlparse(url).path
     name = path.rstrip("/").rsplit("/", 1)[-1] or "index"
-    if not name.lower().endswith(".html"):
-        name = f"{name}.html"
-    return _SAFE_RE.sub("_", name)[:120] or "index.html"
+    if default_suffix and not name.lower().endswith(default_suffix.lower()):
+        name = f"{name}{default_suffix}"
+    return _SAFE_RE.sub("_", name)[:120] or f"index{default_suffix}"
 
 
 def save_raw(
@@ -25,8 +25,13 @@ def save_raw(
     url: str,
     body: bytes,
     fetched_at: str | None = None,
+    default_suffix: str = ".html",
 ) -> Path:
-    """Write a raw snapshot and return its path."""
+    """Write a raw snapshot and return its path.
+
+    ``default_suffix`` controls the extension for extension-less URLs
+    (``.pdf`` for PDF snapshots, ``.html`` otherwise).
+    """
 
     stamp = (
         fetched_at
@@ -34,6 +39,6 @@ def save_raw(
     ).replace(":", "").replace("-", "")
     chapter_dir = Path(raw_dir) / f"ch{chapter}"
     chapter_dir.mkdir(parents=True, exist_ok=True)
-    target = chapter_dir / f"{stamp}_{_slug_from_url(url)}"
+    target = chapter_dir / f"{stamp}_{_slug_from_url(url, default_suffix)}"
     target.write_bytes(body)
     return target

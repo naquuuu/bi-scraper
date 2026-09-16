@@ -28,6 +28,7 @@ from .parsers.bi_rate import (
     parse_rate_rows,
 )
 from .parsers.generic import parse_indicator_rows, parse_page
+from .parsers.pdf import extract_pdf_text
 from .parsers.press_release import parse_press_release_listing
 from .sources import (
     KIND_BI_RATE_FORM,
@@ -40,6 +41,8 @@ from .storage.raw import save_raw
 from .storage.sqlite_store import StudyStore
 
 MAX_CONTENT_CHARS = 200_000
+# Per-request override for PDF downloads only (large binary files); never global.
+PDF_REQUEST_TIMEOUT = 30.0
 
 app = typer.Typer(
     add_completion=False,
@@ -58,6 +61,15 @@ class FetchSummary:
     failures: list[str] = field(default_factory=list)
     newest: Optional[str] = None
     note: str = ""
+
+
+@dataclass
+class EnrichSummary:
+    chapter: int
+    name: str
+    pending: int = 0
+    updated: int = 0
+    failures: list[str] = field(default_factory=list)
 
 
 def run_fetch(
@@ -263,6 +275,63 @@ def _fetch_bi_rate_form(
         page_number += 1
 
 
+def run_enrich(
+    *,
+    store: StudyStore,
+    settings: Settings,
+    chapters: list[Chapter],
+    client: object,
+    limit: int | None = None,
+) -> list[EnrichSummary]:
+    """Scrape the full text behind stored links (public HTML + public PDFs).
+
+    Encrypted/protected PDFs are skipped and reported; nothing is ever
+    decrypted or bypassed.
+    """
+
+    summaries: list[EnrichSummary] = []
+    for chapter in chapters:
+        targets = store.documents_needing_content(chapter.id, limit=limit)
+        summary = EnrichSummary(
+            chapter=chapter.id, name=chapter.name, pending=len(targets)
+        )
+        for row in targets:
+            url = str(row["url"])
+            try:
+                is_pdf = (
+                    str(row["doc_kind"]) == "press_release_pdf"
+                    or url.lower().endswith(".pdf")
+                )
+                if is_pdf:
+                    response = client.get(url, timeout=PDF_REQUEST_TIMEOUT)  # type: ignore[attr-defined]
+                    if response.status_code != 200:
+                        raise RuntimeError(f"HTTP {response.status_code}")
+                    raw_path = save_raw(
+                        settings.raw_dir,
+                        chapter.id,
+                        url,
+                        response.content,
+                        default_suffix=".pdf",
+                    )
+                    text = extract_pdf_text(response.content)
+                else:
+                    response = client.get(url)  # type: ignore[attr-defined]
+                    if response.status_code != 200:
+                        raise RuntimeError(f"HTTP {response.status_code}")
+                    raw_path = save_raw(
+                        settings.raw_dir, chapter.id, url, response.content
+                    )
+                    text = parse_page(response.text, url).text
+                if not text.strip():
+                    raise RuntimeError("no extractable text")
+                store.update_document_content(int(row["id"]), text, str(raw_path))
+                summary.updated += 1
+            except Exception as exc:  # one bad URL never kills the run
+                summary.failures.append(f"{url}: {exc}")
+        summaries.append(summary)
+    return summaries
+
+
 def _configure_stdout() -> None:
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
@@ -343,6 +412,40 @@ def fetch(
             typer.echo(f"  note: {summary.note}")
         for failure in summary.failures:
             typer.echo(f"  [warn] {failure}")
+
+
+@app.command()
+def enrich(
+    chapter: str = typer.Option("all", "--chapter", help="1-8, comma list, or 'all'"),
+    limit: int = typer.Option(0, "--limit", help="Max documents per chapter (0 = all)"),
+) -> None:
+    """Scrape the full text behind stored links (public HTML + public PDFs)."""
+
+    settings = get_settings()
+    load_hub_env_by_reference()
+    chapters = _chapters_or_bad_parameter(chapter)
+    store = _open_store(settings)
+    try:
+        with PoliteClient(settings=settings) as client:
+            summaries = run_enrich(
+                store=store,
+                settings=settings,
+                chapters=chapters,
+                client=client,
+                limit=limit or None,
+            )
+    finally:
+        store.close()
+    updated_total = 0
+    for summary in summaries:
+        updated_total += summary.updated
+        typer.echo(
+            f"ch{summary.chapter} {summary.name}: enriched={summary.updated} "
+            f"pending={summary.pending - summary.updated}"
+        )
+        for failure in summary.failures:
+            typer.echo(f"  [warn] {failure}")
+    typer.echo(f"enrich complete: {updated_total} document(s) with full text")
 
 
 @app.command("ingest-inbox")

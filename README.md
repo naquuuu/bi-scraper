@@ -44,9 +44,11 @@ only. All scraping targets are public pages, so no secrets are required to run.
 bi-scraper fetch --chapter all            # incremental: only docs newer than stored, end = today
 bi-scraper fetch --chapter 2 --start-date 2026-01-01 --end-date 2026-09-01
 bi-scraper fetch --chapter 2 --full       # explicit full refetch (ignores stored newest date)
+bi-scraper enrich                         # scrape the full text behind stored links (HTML + public PDFs)
+bi-scraper enrich --chapter 2 --limit 5   # bounded enrichment run
 bi-scraper ingest-inbox                   # tag data/inbox/*.md chapters 1-8 and index alongside corpus
 bi-scraper index --rebuild                # rebuild the FTS5 index
-bi-scraper export-notebook --chapter 2    # one Markdown per chapter (NotebookLM import)
+bi-scraper export-notebook --chapter 2    # one Markdown per chapter (NotebookLM import; full text + tables)
 bi-scraper export-portfolio --chapter 2   # public-data-only charts + my analysis
 bi-scraper coverage                       # chapter vs doc count vs newest date (exit 1 on FAIL)
 bi-scraper search "inflasi"               # FTS5 full-text search across public docs + my notes
@@ -95,7 +97,8 @@ data/
 └── bi_study.db            # SQLite: documents, chapters, indicators, fetch_log + FTS5
 ```
 
-- `documents` — public pages/press-release metadata + my-notes, newest-first queries
+- `documents` — public pages/press-release metadata + my-notes, newest-first
+  queries; `enrich` fills `content` with the scraped full text
 - `chapters` — 8 chapters with pinned syllabus versions
 - `indicators` — numeric series (BI-Rate, JISDOR) used for charts
 - `documents_fts` — FTS5 index over title/content (rebuilt with `index --rebuild`)
@@ -118,6 +121,9 @@ to text, and indexed alongside the public corpus.
   (`bi-rate.aspx`) uses **8s** instead of the global 3s, after its SharePoint
   DataPager POSTs timed out twice at 3s during multi-window pagination. Every
   other source stays at the 3s default.
+- **PDF enrichment:** `enrich` extracts text from **public** bi.go.id PDFs with
+  `pypdf` using a 30s per-request timeout for PDF downloads only. Encrypted or
+  protected PDFs are **skipped and reported — never decrypted or bypassed**.
 - An **allowlist** restricts fetching to `bi.go.id` hosts; the forbidden
   `pejuang.berkarirbi.id` host raises `ForbiddenSourceError`.
 - Only public, non-gated pages are accessed; BI content is used for personal

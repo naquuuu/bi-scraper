@@ -289,6 +289,43 @@ class StudyStore:
         ).fetchone()
         return int(row[0]) if row else 0
 
+    def documents_needing_content(
+        self, chapter: int | None = None, limit: int | None = None
+    ) -> list[sqlite3.Row]:
+        """Public link/report docs still holding metadata only (no scraped text)."""
+
+        sql = """
+            SELECT * FROM documents
+            WHERE source_type = 'public'
+              AND doc_kind IN ('press_release_link', 'press_release_page', 'press_release_pdf')
+              AND (content = '' OR content = title)
+        """
+        params: list[Any] = []
+        if chapter is not None:
+            sql += " AND chapter = ?"
+            params.append(chapter)
+        sql += " ORDER BY chapter, (doc_date IS NULL), doc_date DESC, id"
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+        return list(self.conn.execute(sql, params).fetchall())
+
+    def update_document_content(
+        self, document_id: int, content: str, raw_path: str | None = None
+    ) -> None:
+        """Replace a document's content (FTS triggers keep the index in sync)."""
+
+        if raw_path is None:
+            self.conn.execute(
+                "UPDATE documents SET content = ? WHERE id = ?", (content, document_id)
+            )
+        else:
+            self.conn.execute(
+                "UPDATE documents SET content = ?, raw_path = ? WHERE id = ?",
+                (content, raw_path, document_id),
+            )
+        self.conn.commit()
+
     def count_documents(self) -> int:
         row = self.conn.execute("SELECT COUNT(*) FROM documents").fetchone()
         return int(row[0]) if row else 0

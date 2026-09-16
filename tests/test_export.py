@@ -35,6 +35,40 @@ def test_notebook_header_flags_and_my_notes(store, settings):
     assert "https://www.bi.go.id/id/publikasi/x" in text
 
 
+def test_notebook_includes_full_table_and_text(store, settings):
+    store.add_document(
+        chapter=2,
+        url="https://www.bi.go.id/x/1",
+        title="Doc one",
+        content="Fakta lengkap satu.",
+        doc_date="2026-09-16",
+    )
+    store.add_document(
+        chapter=2,
+        url="https://www.bi.go.id/x/2",
+        title="Doc two",
+        content="Doc two",
+        doc_date="2026-09-15",
+    )
+    store.add_indicator(
+        chapter=2, name="BI-Rate", period="2026-08-19", value=5.75, unit="%", url="u1"
+    )
+    store.add_indicator(
+        chapter=2, name="BI-Rate", period="2026-07-22", value=5.75, unit="%", url="u2"
+    )
+    store.add_indicator(
+        chapter=2, name="BI-Rate", period="2026-06-18", value=5.75, unit="%", url="u3"
+    )
+    path = export_notebook(store, get_chapter(2), settings)
+    text = path.read_text(encoding="utf-8")
+    assert "## Tabel angka lengkap" in text
+    for period in ("2026-08-19", "2026-07-22", "2026-06-18"):
+        assert f"| {period} | BI-Rate |" in text
+    assert "## Isi Sumber (full text)" in text
+    assert "Fakta lengkap satu." in text
+    assert "_(konten belum di-scrape; metadata saja)_" in text
+
+
 def test_fallback_only_chapter_reports_honest_unknown(store, settings):
     store.add_document(
         chapter=5,

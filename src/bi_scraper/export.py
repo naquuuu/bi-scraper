@@ -122,14 +122,35 @@ def export_notebook(
         lines.append("- no numeric indicators stored yet")
     lines.append("")
 
-    lines.append("## Dated source links (newest first)")
-    public_docs = store.documents_for_chapter(chapter.id, source_type="public", limit=50)
+    lines.append("## Tabel angka lengkap")
+    if series:
+        lines.append("| Periode | Indikator | Nilai | Unit | Sumber |")
+        lines.append("| :--- | :--- | ---: | :--- | :--- |")
+        for row in series:
+            unit = row["unit"] or ""
+            lines.append(
+                f"| {row['period']} | {row['name']} | {row['value']} | {unit} | {row['url'] or ''} |"
+            )
+    else:
+        lines.append("_Belum ada deret angka tersimpan._")
+    lines.append("")
+
+    lines.append("## Isi Sumber (full text)")
+    public_docs = store.documents_for_chapter(chapter.id, source_type="public")
     if public_docs:
         for row in public_docs:
-            dated = row["doc_date"] or str(row["fetched_at"])[:10]
-            lines.append(f"- {dated} -- {row['title']} -- {row['url']}")
+            dated = row["doc_date"] or "tanpa tanggal"
+            lines.append(f"### {dated} -- {row['title']}")
+            lines.append(f"- URL: {row['url']}")
+            lines.append("")
+            content = str(row["content"] or "")
+            if content.strip() and content.strip() != str(row["title"]).strip():
+                lines.append(content)
+            else:
+                lines.append("_(konten belum di-scrape; metadata saja)_")
+            lines.append("")
     else:
-        lines.append("- no public documents stored yet")
+        lines.append("_(no public documents stored yet)_")
     lines.append("")
 
     lines.append("## My notes")

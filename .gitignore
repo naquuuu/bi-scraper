@@ -1,0 +1,35 @@
+# OWNERSHIP: tooling
+# Dependencies & Builds
+node_modules/
+dist/
+build/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Environment & Secrets (config is read by reference from the hub .env)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Local corpus data (scraped pages, inbox notes, sqlite db, exports)
+data/
+exports/
+*.db
+*.sqlite
+
+# Generated charts
+*.png
+
+# IDE & Caches
+.vscode/
+.idea/
+.antigravity/
+.gemini/
+.opencode/
+.pytest_cache/
+Thumbs.db
+.DS_Store

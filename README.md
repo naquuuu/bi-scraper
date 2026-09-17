@@ -46,9 +46,11 @@ bi-scraper fetch --chapter 2 --start-date 2026-01-01 --end-date 2026-09-01
 bi-scraper fetch --chapter 2 --full       # explicit full refetch (ignores stored newest date)
 bi-scraper enrich                         # scrape the full text behind stored links (HTML + public PDFs)
 bi-scraper enrich --chapter 2 --limit 5   # bounded enrichment run
+bi-scraper audit-visuals                  # flag image-heavy pages for manual reading (no network)
 bi-scraper ingest-inbox                   # tag data/inbox/*.md chapters 1-8 and index alongside corpus
 bi-scraper index --rebuild                # rebuild the FTS5 index
-bi-scraper export-notebook --chapter 2    # one Markdown per chapter (NotebookLM import; full text + tables)
+bi-scraper export-notebook --chapter 2    # one pack per chapter (full text + tables)
+bi-scraper export-notebook --chapter 2 --txt  # also write plain-text packs for NotebookLM upload
 bi-scraper export-portfolio --chapter 2   # public-data-only charts + my analysis
 bi-scraper coverage                       # chapter vs doc count vs newest date (exit 1 on FAIL)
 bi-scraper search "inflasi"               # FTS5 full-text search across public docs + my notes
@@ -70,6 +72,21 @@ bi-scraper search "inflasi"               # FTS5 full-text search across public 
 Documents dated **after** a chapter's syllabus pin are flagged
 `[NEWER-THAN-SYLLABUS]` in coverage and exports (they may not be covered by the
 course version yet).
+
+**Manual reads (visual-heavy pages):** pages whose content is carried by
+figures/charts/images are flagged by a conservative heuristic (≥3 *unique*
+content images, or ≥1 image with <1,500 chars of text; icons/logos/social
+assets are excluded, and images shared across ≥10 pages are treated as site
+chrome). Flagged URLs are listed in every study pack under
+`Perlu dibaca manual (konten visual)` — read those pages in the browser.
+`audit-visuals` refreshes the flags from saved raw snapshots (no network).
+
+**Expansion sources (2026-09-17, BI mentor guidance):** hub crawls for
+`tentang-bi`, `informasi-kurs` (×2), `pasar-keuangan` (FX instruments:
+spot/forward/swap/DNDF), `operasi-moneter`, `publikasi/lelang`,
+`stabilitas-sistem-keuangan`, `sistem-pembayaran`, `rupiah`, and
+`pengembangan-ekonomi`; plus the `fungsi-utama` hub, the glossary, and the
+BSPI 2030 PDF (ch5). FX instruments live in ch2/ch3 as agreed.
 
 ## Freshness rule (binding)
 
@@ -124,6 +141,10 @@ to text, and indexed alongside the public corpus.
 - **PDF enrichment:** `enrich` extracts text from **public** bi.go.id PDFs with
   `pypdf` using a 30s per-request timeout for PDF downloads only. Encrypted or
   protected PDFs are **skipped and reported — never decrypted or bypassed**.
+- **Hub crawling:** `hub` sources follow only in-section links (path prefix) up
+  to `max_depth` (2), capped at 60 pages per hub, same bi.go.id host; asset,
+  query-string and already-stored links are skipped. PDFs discovered under the
+  section are text-extracted like any other public PDF.
 - An **allowlist** restricts fetching to `bi.go.id` hosts; the forbidden
   `pejuang.berkarirbi.id` host raises `ForbiddenSourceError`.
 - Only public, non-gated pages are accessed; BI content is used for personal

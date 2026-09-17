@@ -34,6 +34,9 @@ HARD RULES — GROUNDING (apply to every sentence):
    (full text)") and complete numeric tables ("Tabel angka lengkap"). Mine these
    sections fully; never write "tidak ada di sumber" for a fact that appears
    there. Treat "_(konten belum di-scrape; metadata saja)_" as genuinely absent.
+9. Pages listed under "Perlu dibaca manual (konten visual)" are image/chart
+   dependent; their figures are NOT in the text. List them as manual reads and
+   do not infer what the figures show.
 
 ## OUTPUT 1 — FULL-DETAIL REPORT (exhaustive document)
 Goal: nothing in the sources is left out. Required structure:

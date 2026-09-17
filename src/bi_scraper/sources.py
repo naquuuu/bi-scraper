@@ -6,6 +6,9 @@ Kinds:
 - ``bi_rate_form``  BI-Rate date-range POST table (see parsers.bi_rate)
 - ``table_page``    page whose HTML table contains a numeric series (JISDOR, SPIP)
 - ``press_release`` listing of dated publication links -> metadata only, no PDFs
+- ``hub``           crawl a section: root page + internal links under ``hub_prefix``
+                    up to ``max_depth`` levels (same host, assets excluded)
+- ``pdf``           direct public PDF -> text via pypdf (never decrypted)
 """
 
 from __future__ import annotations
@@ -16,6 +19,8 @@ KIND_PAGE = "page"
 KIND_BI_RATE_FORM = "bi_rate_form"
 KIND_TABLE_PAGE = "table_page"
 KIND_PRESS_RELEASE = "press_release"
+KIND_HUB = "hub"
+KIND_PDF = "pdf"
 
 
 @dataclass(frozen=True)
@@ -28,6 +33,10 @@ class Source:
     # Per-source timeout override (seconds). Keep None unless a specific source
     # repeatedly times out; never raise the global timeout.
     timeout: float | None = None
+    # Hub crawling: only links whose path starts with this prefix are followed;
+    # ``max_depth`` counts link hops from the hub root (root = depth 0).
+    hub_prefix: str | None = None
+    max_depth: int = 1
 
 
 SOURCES: tuple[Source, ...] = (
@@ -85,6 +94,115 @@ SOURCES: tuple[Source, ...] = (
     Source(8, "Pasar Keuangan", "https://www.bi.go.id/id/fungsi-utama/moneter/pasar-keuangan/default.aspx", KIND_PAGE),
     Source(8, "Kajian BI (multilateral)", "https://www.bi.go.id/id/publikasi/kajian/Default.aspx", KIND_PRESS_RELEASE),
     Source(8, "Laporan BI (multilateral)", "https://www.bi.go.id/id/publikasi/laporan/default.aspx", KIND_PRESS_RELEASE),
+    # ------------------------------------------------------------------
+    # Expansion (BI mentor guidance): hub crawling, FX instruments, BSPI PDF
+    # ------------------------------------------------------------------
+    # Chapter 1 -- hubs + glossary
+    Source(
+        1,
+        "Tentang BI (hub)",
+        "https://www.bi.go.id/id/tentang-bi/Default.aspx",
+        KIND_HUB,
+        "whole tentang-bi section (profil, sejarah, transformasi, sub-subpages)",
+        hub_prefix="/id/tentang-bi/",
+        max_depth=2,
+    ),
+    Source(1, "Fungsi Utama (hub)", "https://www.bi.go.id/id/fungsi-utama/default.aspx", KIND_PAGE),
+    Source(1, "Glosarium", "https://www.bi.go.id/id/glosarium.aspx", KIND_PAGE),
+    # Chapter 2 -- FX market & instruments (spot/forward/swap/TOD/TOM etc.)
+    Source(
+        2,
+        "Informasi Kurs (hub)",
+        "https://www.bi.go.id/id/fungsi-utama/moneter/informasi-kurs/default.aspx",
+        KIND_HUB,
+        "reference rates & FX instruments",
+        hub_prefix="/id/fungsi-utama/moneter/informasi-kurs/",
+        max_depth=2,
+    ),
+    Source(
+        2,
+        "Statistik Informasi Kurs (hub)",
+        "https://www.bi.go.id/id/statistik/informasi-kurs/jisdor",
+        KIND_HUB,
+        "JISDOR, kurs transaksi, kurs acuan non-USD/IDR",
+        hub_prefix="/id/statistik/informasi-kurs/",
+        max_depth=2,
+    ),
+    Source(
+        2,
+        "Pasar Keuangan (hub)",
+        "https://www.bi.go.id/id/fungsi-utama/moneter/pasar-keuangan/default.aspx",
+        KIND_HUB,
+        "PUVA / FX market instruments (spot, forward, swap, DNDF, ...)",
+        hub_prefix="/id/fungsi-utama/moneter/pasar-keuangan/",
+        max_depth=2,
+    ),
+    # Chapter 3 -- monetary operations & FX auctions
+    Source(
+        3,
+        "Operasi Moneter (hub)",
+        "https://www.bi.go.id/id/fungsi-utama/moneter/operasi-moneter/Default.aspx",
+        KIND_HUB,
+        "monetary operations incl. FX instruments",
+        hub_prefix="/id/fungsi-utama/moneter/operasi-moneter/",
+        max_depth=2,
+    ),
+    Source(
+        3,
+        "Lelang & Lindung Nilai (hub)",
+        "https://www.bi.go.id/id/publikasi/lelang/operasi-moneter/",
+        KIND_HUB,
+        "monetary operations auctions, BI hedging",
+        hub_prefix="/id/publikasi/lelang/",
+        max_depth=1,
+    ),
+    # Chapter 4 -- full SSK section
+    Source(
+        4,
+        "Stabilitas Sistem Keuangan (hub)",
+        "https://www.bi.go.id/id/fungsi-utama/stabilitas-sistem-keuangan/ikhtisar/",
+        KIND_HUB,
+        "crisis protocol, coordination, UMKM, inclusive, green finance",
+        hub_prefix="/id/fungsi-utama/stabilitas-sistem-keuangan/",
+        max_depth=2,
+    ),
+    # Chapter 5 -- full payment-system section + BSPI 2030
+    Source(
+        5,
+        "Sistem Pembayaran (hub)",
+        "https://www.bi.go.id/id/fungsi-utama/sistem-pembayaran/default.aspx",
+        KIND_HUB,
+        "licensing, AML/CFT, standards, blueprint",
+        hub_prefix="/id/fungsi-utama/sistem-pembayaran/",
+        max_depth=2,
+    ),
+    Source(
+        5,
+        "BSPI 2030 (PDF)",
+        "https://www.bi.go.id/id/publikasi/kajian/Documents/Blueprint-Sistem-Pembayaran-Indonesia-2030.pdf",
+        KIND_PDF,
+        "Blueprint Sistem Pembayaran Indonesia 2030 (full text via pypdf)",
+    ),
+    # Chapter 6 -- full Rupiah section
+    Source(
+        6,
+        "Rupiah (hub)",
+        "https://www.bi.go.id/id/rupiah/Default.aspx",
+        KIND_HUB,
+        "whole rupiah section",
+        hub_prefix="/id/rupiah/",
+        max_depth=2,
+    ),
+    # Chapter 8 -- sharia economy section
+    Source(
+        8,
+        "Pengembangan Ekonomi (hub)",
+        "https://www.bi.go.id/id/fungsi-utama/moneter/pengembangan-ekonomi/Default.aspx",
+        KIND_HUB,
+        "sharia economy & finance",
+        hub_prefix="/id/fungsi-utama/moneter/pengembangan-ekonomi/",
+        max_depth=2,
+    ),
 )
 
 

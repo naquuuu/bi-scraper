@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from bi_scraper.chapter_map import get_chapter
-from bi_scraper.export import export_notebook, export_portfolio
+from bi_scraper.export import export_notebook, export_portfolio, markdown_to_plain
 
 
 def test_notebook_header_flags_and_my_notes(store, settings):
@@ -67,6 +67,42 @@ def test_notebook_includes_full_table_and_text(store, settings):
     assert "## Isi Sumber (full text)" in text
     assert "Fakta lengkap satu." in text
     assert "_(konten belum di-scrape; metadata saja)_" in text
+
+
+def test_notebook_visual_section_and_txt(store, settings):
+    store.add_document(
+        chapter=1,
+        url="https://www.bi.go.id/id/x/heavy",
+        title="Heavy page",
+        content="teks",
+        doc_date="2026-09-10",
+        visual_flag=1,
+        image_count=5,
+    )
+    path = export_notebook(store, get_chapter(1), settings, write_txt=True)
+    text = path.read_text(encoding="utf-8")
+    assert "- Halaman perlu dibaca manual (konten visual): 1" in text
+    assert "## Perlu dibaca manual (konten visual)" in text
+    assert "(gambar: 5)" in text
+
+    txt_path = path.with_suffix(".txt")
+    assert txt_path.is_file()
+    plain = txt_path.read_text(encoding="utf-8")
+    assert "##" not in plain
+    assert "Perlu dibaca manual (konten visual)" in plain
+
+
+def test_markdown_to_plain_strips_markdown_syntax():
+    md = (
+        "<!-- comment -->\n# Judul\n\n| A | B |\n| :--- | ---: |\n| 1 | 2 |\n\n"
+        "- **penting**\n"
+    )
+    plain = markdown_to_plain(md)
+    assert "comment" not in plain
+    assert "Judul" in plain
+    assert "1 | 2" in plain
+    assert "---" not in plain
+    assert "**" not in plain
 
 
 def test_fallback_only_chapter_reports_honest_unknown(store, settings):

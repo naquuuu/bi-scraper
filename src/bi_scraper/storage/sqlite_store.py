@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS documents (
     raw_path TEXT,
     content TEXT NOT NULL DEFAULT '',
     content_hash TEXT NOT NULL,
+    visual_flag INTEGER NOT NULL DEFAULT 0,
+    image_count INTEGER NOT NULL DEFAULT 0,
     UNIQUE (chapter, url, content_hash)
 );
 
@@ -115,6 +117,14 @@ class StudyStore:
                 "UPDATE documents SET date_source = 'fetch_fallback' "
                 "WHERE doc_date IS NULL AND source_type = 'public'"
             )
+        if "visual_flag" not in columns:
+            self.conn.execute(
+                "ALTER TABLE documents ADD COLUMN visual_flag INTEGER NOT NULL DEFAULT 0"
+            )
+        if "image_count" not in columns:
+            self.conn.execute(
+                "ALTER TABLE documents ADD COLUMN image_count INTEGER NOT NULL DEFAULT 0"
+            )
         self.conn.commit()
 
     def close(self) -> None:
@@ -157,6 +167,8 @@ class StudyStore:
         date_source: str | None = None,
         fetched_at: str | None = None,
         raw_path: str | None = None,
+        visual_flag: int = 0,
+        image_count: int = 0,
     ) -> bool:
         """Insert a document; returns ``True`` when a new row was stored.
 
@@ -172,8 +184,9 @@ class StudyStore:
             """
             INSERT OR IGNORE INTO documents
                 (chapter, url, title, doc_date, date_source, fetched_at,
-                 source_type, doc_kind, raw_path, content, content_hash)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 source_type, doc_kind, raw_path, content, content_hash,
+                 visual_flag, image_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 chapter,
@@ -187,6 +200,8 @@ class StudyStore:
                 raw_path,
                 content,
                 digest,
+                visual_flag,
+                image_count,
             ),
         )
         self.conn.commit()
@@ -325,6 +340,60 @@ class StudyStore:
                 (content, raw_path, document_id),
             )
         self.conn.commit()
+
+    def set_visual_flags(
+        self, document_id: int, *, image_count: int, flagged: bool
+    ) -> None:
+        """Store the image-dependence heuristic result for a document."""
+
+        self.conn.execute(
+            "UPDATE documents SET image_count = ?, visual_flag = ? WHERE id = ?",
+            (image_count, 1 if flagged else 0, document_id),
+        )
+        self.conn.commit()
+
+    def visual_heavy_documents(self, chapter: int) -> list[sqlite3.Row]:
+        """Flagged public pages: text alone does not represent their content."""
+
+        return list(
+            self.conn.execute(
+                """
+                SELECT * FROM documents
+                WHERE chapter = ? AND source_type = 'public' AND visual_flag = 1
+                ORDER BY (doc_date IS NULL), doc_date DESC, fetched_at DESC
+                """,
+                (chapter,),
+            ).fetchall()
+        )
+
+    def public_documents_with_raw(self, chapter: int) -> list[sqlite3.Row]:
+        """Public docs with saved HTML snapshots and real content (audit targets)."""
+
+        return list(
+            self.conn.execute(
+                """
+                SELECT * FROM documents
+                WHERE chapter = ? AND source_type = 'public'
+                  AND raw_path LIKE '%.html'
+                  AND content != '' AND content != title
+                """,
+                (chapter,),
+            ).fetchall()
+        )
+
+    def all_public_urls(self, chapter: int) -> set[str]:
+        rows = self.conn.execute(
+            "SELECT url FROM documents WHERE chapter = ? AND source_type = 'public'",
+            (chapter,),
+        ).fetchall()
+        return {str(row["url"]) for row in rows}
+
+    def document_by_url(self, chapter: int, url: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM documents WHERE chapter = ? AND url = ? "
+            "ORDER BY id DESC LIMIT 1",
+            (chapter, url),
+        ).fetchone()
 
     def count_documents(self) -> int:
         row = self.conn.execute("SELECT COUNT(*) FROM documents").fetchone()

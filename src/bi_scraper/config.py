@@ -23,6 +23,7 @@ MAX_RETRIES = 2
 FRESHNESS_HORIZON_DAYS = 60
 FULL_START_DEFAULT = "2016-01-01"
 MAX_PAGINATION_PAGES = 50
+HUB_MAX_PAGES = 60
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,7 @@ class Settings:
     max_retries: int = MAX_RETRIES
     horizon_days: int = FRESHNESS_HORIZON_DAYS
     max_pages: int = MAX_PAGINATION_PAGES
+    hub_max_pages: int = HUB_MAX_PAGES
 
 
 def load_hub_env_by_reference() -> Path | None:

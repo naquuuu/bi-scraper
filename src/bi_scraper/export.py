@@ -19,6 +19,49 @@ _SLUG_RE = re.compile(r"[^A-Za-z0-9]+")
 
 MIN_THIN_DOCS = 3
 
+_MD_HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
+_MD_TABLE_SEP = re.compile(r"^\|[\s:\-|]+\|\s*$")
+_MD_HEADING = re.compile(r"^#{1,6}\s*(.*?)\s*$")
+_MD_EMPHASIS = re.compile(r"(\*\*|__)(.*?)\1")
+_MD_CODE = re.compile(r"`([^`]*)`")
+_MD_ITALIC = re.compile(r"(?<!\w)[*_](?=\S)(.*?)(?<=\S)[*_](?!\w)")
+_MD_ESCAPE = re.compile(r"\\([\\`*_{}\[\]()#+\-.!|])")
+
+
+def markdown_to_plain(text: str) -> str:
+    """Strip markdown syntax for plain-text (.txt) NotebookLM uploads."""
+
+    text = _MD_HTML_COMMENT.sub("", text)
+    lines_out: list[str] = []
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if _MD_TABLE_SEP.match(line):
+            continue
+        heading = _MD_HEADING.match(line)
+        if heading:
+            line = heading.group(1)
+        line = _MD_EMPHASIS.sub(r"\2", line)
+        line = _MD_CODE.sub(r"\1", line)
+        line = _MD_ITALIC.sub(r"\1", line)
+        line = _MD_ESCAPE.sub(r"\1", line)
+        stripped = line.strip()
+        if stripped.startswith("|") and stripped.endswith("|"):
+            cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+            line = " | ".join(cells)
+        lines_out.append(line)
+
+    collapsed: list[str] = []
+    blanks = 0
+    for line in lines_out:
+        if not line.strip():
+            blanks += 1
+            if blanks > 1:
+                continue
+        else:
+            blanks = 0
+        collapsed.append(line)
+    return "\n".join(collapsed).strip() + "\n"
+
 
 def _slug(value: str) -> str:
     return _SLUG_RE.sub("-", value).strip("-").lower() or "export"
@@ -91,12 +134,21 @@ def export_notebook(
     chapter: Chapter,
     settings: Settings,
     now: datetime | None = None,
+    write_txt: bool = False,
 ) -> Path:
-    """Write one NotebookLM-ready Markdown study pack for a chapter."""
+    """Write one NotebookLM-ready Markdown study pack for a chapter.
+
+    With ``write_txt`` a plain-text sibling is written as well (markdown
+    stripped) for easier NotebookLM uploads.
+    """
 
     status = _chapter_status(store, chapter, settings, now)
+    visual_heavy = store.visual_heavy_documents(chapter.id)
     lines: list[str] = [f"<!-- OWNERSHIP: {OWNERSHIP_NOTEBOOK} -->"]
     lines += _header_lines(status, settings)
+    lines.append(
+        f"- Halaman perlu dibaca manual (konten visual): {len(visual_heavy)}"
+    )
     lines.append("")
 
     warnings = _warning_lines(status)
@@ -153,6 +205,22 @@ def export_notebook(
         lines.append("_(no public documents stored yet)_")
     lines.append("")
 
+    lines.append("## Perlu dibaca manual (konten visual)")
+    if visual_heavy:
+        lines.append(
+            "_Halaman berikut kaya gambar/diagram; teks hasil scrape tidak "
+            "mewakili isi penuhnya - baca langsung di browser._"
+        )
+        for row in visual_heavy:
+            dated = row["doc_date"] or "tanpa tanggal"
+            lines.append(
+                f"- {dated} -- {row['title']} -- {row['url']} "
+                f"(gambar: {row['image_count']})"
+            )
+    else:
+        lines.append("_Tidak ada halaman yang terdeteksi kaya gambar._")
+    lines.append("")
+
     lines.append("## My notes")
     notes = store.documents_for_chapter(chapter.id, source_type="my-notes")
     if notes:
@@ -168,7 +236,12 @@ def export_notebook(
     out_dir = settings.exports_dir / "notebook"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"ch{chapter.id}_{_slug(chapter.name)}.md"
-    out_path.write_text("\n".join(lines), encoding="utf-8")
+    body = "\n".join(lines)
+    out_path.write_text(body, encoding="utf-8")
+    if write_txt:
+        out_path.with_suffix(".txt").write_text(
+            markdown_to_plain(body), encoding="utf-8"
+        )
     return out_path
 
 

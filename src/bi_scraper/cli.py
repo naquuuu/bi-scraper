@@ -7,7 +7,9 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 import typer
 
@@ -28,10 +30,19 @@ from .parsers.bi_rate import (
     parse_rate_rows,
 )
 from .parsers.generic import parse_indicator_rows, parse_page
+from .parsers.links import extract_internal_links
 from .parsers.pdf import extract_pdf_text
 from .parsers.press_release import parse_press_release_listing
+from .parsers.visual import (
+    content_image_srcs,
+    count_content_images,
+    is_visual_heavy,
+    is_visual_heavy_unique,
+)
 from .sources import (
     KIND_BI_RATE_FORM,
+    KIND_HUB,
+    KIND_PDF,
     KIND_PRESS_RELEASE,
     KIND_TABLE_PAGE,
     Source,
@@ -142,6 +153,28 @@ def _fetch_source(
     full: bool,
     summary: FetchSummary,
 ) -> None:
+    if source.kind == KIND_PDF:
+        _fetch_pdf_source(
+            store=store,
+            settings=settings,
+            client=client,
+            source=source,
+            chapter=chapter,
+            summary=summary,
+        )
+        return
+
+    if source.kind == KIND_HUB:
+        _fetch_hub(
+            store=store,
+            settings=settings,
+            client=client,
+            source=source,
+            chapter=chapter,
+            summary=summary,
+        )
+        return
+
     if source.kind == KIND_BI_RATE_FORM:
         _fetch_bi_rate_form(
             store=store,
@@ -181,6 +214,7 @@ def _fetch_source(
         return
 
     content = parse_page(response.text, source.url)
+    image_count = count_content_images(response.text)
     store.add_document(
         chapter=chapter.id,
         url=source.url,
@@ -188,6 +222,8 @@ def _fetch_source(
         content=content.text[:MAX_CONTENT_CHARS],
         doc_kind="web_page",
         raw_path=str(raw_path),
+        visual_flag=1 if is_visual_heavy(image_count, len(content.text)) else 0,
+        image_count=image_count,
     )
     summary.fetched += 1
     if source.kind == KIND_TABLE_PAGE:
@@ -275,6 +311,204 @@ def _fetch_bi_rate_form(
         page_number += 1
 
 
+def _hub_prefix(source: Source) -> str:
+    """Path prefix that limits which links a hub crawl may follow."""
+
+    if source.hub_prefix:
+        return source.hub_prefix
+    parts = [part for part in urlparse(source.url).path.split("/") if part]
+    return "/" + "/".join(parts[:2]) + "/" if parts else "/"
+
+
+def _fetch_pdf_source(
+    *,
+    store: StudyStore,
+    settings: Settings,
+    client: object,
+    source: Source,
+    chapter: Chapter,
+    summary: FetchSummary,
+) -> None:
+    """Fetch one public PDF and store its extracted text (never decrypted)."""
+
+    response = client.get(source.url, timeout=PDF_REQUEST_TIMEOUT)  # type: ignore[attr-defined]
+    if response.status_code != 200:
+        raise RuntimeError(f"HTTP {response.status_code}")
+    raw_path = save_raw(
+        settings.raw_dir,
+        chapter.id,
+        source.url,
+        response.content,
+        default_suffix=".pdf",
+    )
+    text = extract_pdf_text(response.content)
+    if not text.strip():
+        raise RuntimeError("no extractable text")
+    store.add_document(
+        chapter=chapter.id,
+        url=source.url,
+        title=source.name,
+        content=text,
+        doc_kind="web_pdf",
+        raw_path=str(raw_path),
+    )
+    summary.fetched += 1
+
+
+def _fetch_hub(
+    *,
+    store: StudyStore,
+    settings: Settings,
+    client: object,
+    source: Source,
+    chapter: Chapter,
+    summary: FetchSummary,
+) -> None:
+    """BFS crawl of a bi.go.id section (root + subpages up to max_depth).
+
+    Only links under the hub path prefix are followed; assets are skipped and
+    every page is stored with its visual-dependence flags. Already-stored URLs
+    are refreshed (flags/content untouched) instead of duplicated.
+    """
+
+    prefix = _hub_prefix(source)
+    queue: list[tuple[str, int]] = [(source.url, 0)]
+    visited: set[str] = set()
+    known_urls = store.all_public_urls(chapter.id)
+    pages = 0
+    while queue and pages < settings.hub_max_pages:
+        url, depth = queue.pop(0)
+        if url in visited:
+            continue
+        visited.add(url)
+        pages += 1
+        try:
+            if url.lower().endswith(".pdf"):
+                response = client.get(url, timeout=PDF_REQUEST_TIMEOUT)  # type: ignore[attr-defined]
+                if response.status_code != 200:
+                    raise RuntimeError(f"HTTP {response.status_code}")
+                raw_path = save_raw(
+                    settings.raw_dir,
+                    chapter.id,
+                    url,
+                    response.content,
+                    default_suffix=".pdf",
+                )
+                text = extract_pdf_text(response.content)
+                if url not in known_urls:
+                    store.add_document(
+                        chapter=chapter.id,
+                        url=url,
+                        title=url.rsplit("/", 1)[-1],
+                        content=text,
+                        doc_kind="web_pdf",
+                        raw_path=str(raw_path),
+                    )
+                    known_urls.add(url)
+                    summary.fetched += 1
+                continue
+            response = client.get(url)  # type: ignore[attr-defined]
+            if response.status_code != 200:
+                raise RuntimeError(f"HTTP {response.status_code}")
+            raw_path = save_raw(settings.raw_dir, chapter.id, url, response.content)
+            page = parse_page(response.text, url)
+            image_count = count_content_images(response.text)
+            visual_heavy = is_visual_heavy(image_count, len(page.text))
+            if url in known_urls:
+                existing = store.document_by_url(chapter.id, url)
+                if existing is not None:
+                    store.set_visual_flags(
+                        int(existing["id"]),
+                        image_count=image_count,
+                        flagged=visual_heavy,
+                    )
+            else:
+                store.add_document(
+                    chapter=chapter.id,
+                    url=url,
+                    title=page.title or url,
+                    content=page.text,
+                    doc_kind="web_page",
+                    raw_path=str(raw_path),
+                    visual_flag=1 if visual_heavy else 0,
+                    image_count=image_count,
+                )
+                known_urls.add(url)
+                summary.fetched += 1
+            if depth < source.max_depth:
+                for link in extract_internal_links(response.text, url, prefix):
+                    if link not in visited:
+                        queue.append((link, depth + 1))
+        except Exception as exc:  # one bad page never kills the crawl
+            summary.failures.append(f"{url}: {exc}")
+
+
+@dataclass
+class VisualAuditSummary:
+    chapter: int
+    name: str
+    scanned: int = 0
+    flagged: int = 0
+
+
+# Images repeated across at least this many pages are site chrome (sidebar
+# thumbnails, carousels), not page content, and never trigger the flag alone.
+CHROME_IMAGE_MIN_PAGES = 10
+
+
+def run_audit_visuals(
+    *, store: StudyStore, chapters: list[Chapter]
+) -> list[VisualAuditSummary]:
+    """Re-scan saved raw snapshots for image-heavy pages (no network access).
+
+    Two passes: build a cross-page frequency table of image srcs (shared
+    chrome detection), then flag pages whose *unique* images dominate.
+    """
+
+    per_doc: list[tuple[int, str, list[str], int]] = []
+    for chapter in chapters:
+        for row in store.public_documents_with_raw(chapter.id):
+            raw_path = Path(str(row["raw_path"] or ""))
+            if not raw_path.is_file():
+                continue
+            try:
+                html = raw_path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            per_doc.append(
+                (
+                    int(row["id"]),
+                    str(row["chapter"]),
+                    content_image_srcs(html),
+                    len(str(row["content"] or "")),
+                )
+            )
+
+    frequency: dict[str, int] = {}
+    for _, _, srcs, _ in per_doc:
+        for src in set(srcs):
+            frequency[src] = frequency.get(src, 0) + 1
+
+    summaries: list[VisualAuditSummary] = []
+    for chapter in chapters:
+        chapter_docs = [item for item in per_doc if item[1] == str(chapter.id)]
+        summary = VisualAuditSummary(
+            chapter=chapter.id, name=chapter.name, scanned=len(chapter_docs)
+        )
+        for document_id, _, srcs, text_length in chapter_docs:
+            unique = sum(
+                1 for src in set(srcs) if frequency.get(src, 0) < CHROME_IMAGE_MIN_PAGES
+            )
+            visual_heavy = is_visual_heavy_unique(unique, len(srcs), text_length)
+            store.set_visual_flags(
+                document_id, image_count=unique, flagged=visual_heavy
+            )
+            if visual_heavy:
+                summary.flagged += 1
+        summaries.append(summary)
+    return summaries
+
+
 def run_enrich(
     *,
     store: StudyStore,
@@ -322,9 +556,15 @@ def run_enrich(
                         settings.raw_dir, chapter.id, url, response.content
                     )
                     text = parse_page(response.text, url).text
+                    image_count = count_content_images(response.text)
+                    visual_heavy = is_visual_heavy(image_count, len(text))
                 if not text.strip():
                     raise RuntimeError("no extractable text")
                 store.update_document_content(int(row["id"]), text, str(raw_path))
+                if not is_pdf:
+                    store.set_visual_flags(
+                        int(row["id"]), image_count=image_count, flagged=visual_heavy
+                    )
                 summary.updated += 1
             except Exception as exc:  # one bad URL never kills the run
                 summary.failures.append(f"{url}: {exc}")
@@ -448,6 +688,32 @@ def enrich(
     typer.echo(f"enrich complete: {updated_total} document(s) with full text")
 
 
+@app.command("audit-visuals")
+def audit_visuals_command(
+    chapter: str = typer.Option("all", "--chapter", help="1-8, comma list, or 'all'"),
+) -> None:
+    """Flag image-heavy pages using saved raw snapshots (no network access)."""
+
+    settings = get_settings()
+    store = _open_store(settings)
+    try:
+        summaries = run_audit_visuals(
+            store=store, chapters=_chapters_or_bad_parameter(chapter)
+        )
+    finally:
+        store.close()
+    total_flagged = 0
+    for summary in summaries:
+        total_flagged += summary.flagged
+        typer.echo(
+            f"ch{summary.chapter} {summary.name}: scanned={summary.scanned} "
+            f"visual_heavy={summary.flagged}"
+        )
+    typer.echo(
+        f"audit-visuals complete: {total_flagged} page(s) flagged for manual reading"
+    )
+
+
 @app.command("ingest-inbox")
 def ingest_inbox_command() -> None:
     """Tag and index my own chapter summaries from data/inbox (no scraping)."""
@@ -488,6 +754,9 @@ def index(
 @app.command("export-notebook")
 def export_notebook_command(
     chapter: str = typer.Option("all", "--chapter", help="1-8, comma list, or 'all'"),
+    txt: bool = typer.Option(
+        False, "--txt", help="Also write plain-text (.txt) packs for upload"
+    ),
 ) -> None:
     """Write NotebookLM-ready Markdown study packs (one per chapter)."""
 
@@ -495,8 +764,10 @@ def export_notebook_command(
     store = _open_store(settings)
     try:
         for selected in _chapters_or_bad_parameter(chapter):
-            path = _export_notebook(store, selected, settings)
+            path = _export_notebook(store, selected, settings, write_txt=txt)
             typer.echo(f"ch{selected.id}: wrote {path}")
+            if txt:
+                typer.echo(f"ch{selected.id}: wrote {path.with_suffix('.txt')}")
     finally:
         store.close()
 

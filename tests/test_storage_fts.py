@@ -78,6 +78,13 @@ def test_count_documents(store):
     assert store.count_documents() == 1
 
 
+def test_visual_columns_default_to_zero(store):
+    store.add_document(chapter=1, url="https://x", title="t", content="c")
+    row = store.documents_for_chapter(1)[0]
+    assert row["visual_flag"] == 0
+    assert row["image_count"] == 0
+
+
 def test_date_source_derivation_and_real_date_exclusion(store):
     store.add_document(chapter=2, url="https://dated", title="dated", doc_date="2026-08-19")
     store.add_document(chapter=2, url="https://undated", title="undated")

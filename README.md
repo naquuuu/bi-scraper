@@ -155,6 +155,23 @@ to text, and indexed alongside the public corpus.
 - Only public, non-gated pages are accessed; BI content is used for personal
   study and its ToS/attribution terms apply (source URLs are always recorded).
 
+## NotebookLM prompts
+
+`prompts/notebooklm/` holds five standalone, paste-ready prompts (Bahasa Indonesia)
+that turn the uploaded packs into study outputs:
+
+| File | Output |
+| :--- | :--- |
+| `1_mindmap.txt` | Mermaid mind map ch1–ch8 + narasi keterkaitan antar-chapter |
+| `2_report.txt` | Memo naratif 10-pager (4–5k kata) dari seluruh isi |
+| `3_slides.txt` | Slide MBB per chapter (≥10; 20 untuk pack >2 MB) |
+| `4_quiz.txt` | Kuis "Booster" 50 soal/chapter (opsi A–E, kunci + pembahasan) |
+| `5_flashcards.txt` | 25–40 kartu/chapter (angka, fakta, UU, kelembagaan) |
+
+Paste one file into NotebookLM's Configure-chat (each is <2.2k chars, well under the
+10k limit) and type its trigger, e.g. `Jalankan Quiz`. Long outputs continue with
+`[LANJUT]` without renumbering.
+
 ## OWNERSHIP tags
 
 Every file starts with an `OWNERSHIP:` line:

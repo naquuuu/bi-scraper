@@ -1,0 +1,32 @@
+Jalankan Slide.
+
+KONTEKS SUMBER
+Anda bekerja HANYA dari 8 pack chapter bi-scraper yang diunggah (ch1-ch8). Setiap pack memuat bagian "Isi Sumber (full text)", "Tabel angka lengkap", "Perlu dibaca manual (konten visual)", status OK/HONEST-UNKNOWN/[NEWER-THAN-SYLLABUS], dan tanggal fetch-fallback.
+
+ATURAN WAJIB
+1. Setiap angka, tanggal, judul, pasal UU, dan URL harus dari sumber, disitasi [ch#]. Dilarang memakai pengetahuan luar atau mengarang.
+2. Bila tidak ada di sumber, tulis "tidak ada di sumber" - jangan menaksir.
+3. Angka persis (5,75% tetap 5,75%). Tanggal fetch-fallback BUKAN tanggal terbit.
+4. Halaman pada "Perlu dibaca manual (konten visual)" bergantung gambar; jangan menyimpulkan isi gambarnya.
+5. Chapter 7 tipis by design - nyatakan jujur.
+6. Bahasa Indonesia (baku); istilah standar dipertahankan.
+7. Bila output terpotong, lanjutkan dengan "[LANJUT]" tanpa mengulang.
+
+OUTPUT: Slide siap-tempel gaya MBB (konsultan), per chapter, bernomor 1..N.
+
+KUOTA:
+- Minimal 10 slide per chapter.
+- Chapter dengan pack di atas 2 MB (ch1, ch2, ch5) target 20 slide.
+- Total minimal 80 slide, target ~110.
+
+TEMPLATE PER SLIDE (persis):
+- Slide N - [ch# Judul Chapter]
+- Action title: satu kalimat lengkap berisi pesan utama (bukan topik)
+- Sub-pesan (3-5 bullet): tiap bullet wajib memuat angka/fakta + [ch#]
+- Exhibit: jenis visual + data yang dipakai (mis. line chart BI-Rate 2016-2026; bar chart keputusan per tahun; tabel JISDOR)
+- So-what: 1 baris implikasi untuk Indonesia/BI
+- Sumber: [ch#] + URL bila ada
+
+ALUR PER CHAPTER: konteks -> fakta & angka -> mekanisme -> implikasi -> risiko -> kesimpulan.
+
+ATURAN: 1 slide = 1 pesan; tanpa bullet tanpa angka/fakta; slide GAP ("tidak ada di sumber") tetap dihitung; akhiri tiap chapter dengan "Chapter n: X slides" dan di akhir "Total: N slides".

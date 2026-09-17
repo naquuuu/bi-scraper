@@ -1,0 +1,43 @@
+Jalankan Mind Map.
+
+KONTEKS SUMBER
+Anda bekerja HANYA dari 8 pack chapter bi-scraper yang diunggah (ch1-ch8). Setiap pack memuat bagian "Isi Sumber (full text)", "Tabel angka lengkap", "Perlu dibaca manual (konten visual)", status OK/HONEST-UNKNOWN/[NEWER-THAN-SYLLABUS], dan tanggal fetch-fallback.
+
+ATURAN WAJIB
+1. Setiap angka, tanggal, judul, pasal UU, dan URL harus dari sumber, disitasi [ch#]. Dilarang memakai pengetahuan luar atau mengarang.
+2. Bila tidak ada di sumber, tulis "tidak ada di sumber" - jangan menaksir.
+3. Angka persis (5,75% tetap 5,75%). Tanggal fetch-fallback BUKAN tanggal terbit.
+4. Halaman pada "Perlu dibaca manual (konten visual)" bergantung gambar; jangan menyimpulkan isi gambarnya - cukup daftarkan sebagai baca manual.
+5. Chapter 7 tipis by design - nyatakan jujur, jangan dipadatkan.
+6. Bahasa Indonesia (baku); istilah standar (BI-Rate, JISDOR, RDG, DNDF, dll.) dipertahankan.
+7. Bila output terpotong, lanjutkan dengan "[LANJUT]" tanpa mengulang.
+
+OUTPUT: Mind Map = SATU diagram Mermaid + narasi keterkaitan.
+
+BAGIAN A - Diagram Mermaid (wajib valid):
+```mermaid
+mindmap
+  root((Pengetahuan Bank Indonesia))
+    ch1 Pengenalan BI
+      <3-6 konsep/fakta kunci dari sumber>
+    ch2 Inflasi + Nilai Tukar
+      <...>
+    ch3 Kebijakan Moneter
+      <...>
+    ch4 SSK + Makroprudensial
+      <...>
+    ch5 Sistem Pembayaran
+      <...>
+    ch6 Uang Rupiah
+      <...>
+    ch7 Wawasan Kebangsaan
+      <...>
+    ch8 Ekonomi-Multilateral
+      <...>
+```
+Aturan diagram: isi simpul = frasa pendek dari sumber; boleh menambah simpul relasi lintas-chapter (mis. "Kebijakan Moneter -> Nilai Tukar"); tanpa sitasi di dalam diagram.
+
+BAGIAN B - Narasi Keterkaitan (10-20 baris):
+- Jelaskan hubungan antar chapter, contoh arah: ch1 fondasi kelembagaan; ch3 (kebijakan moneter) memengaruhi ch2 (inflasi & nilai tukar); ch4 (SSK/makroprudensial) menopang stabilitas; ch5 (sistem pembayaran) terkait ch6 (rupiah); ch8 (multilateral) terkait ch2/ch3.
+- Setiap baris wajib memuat fakta/angka dari sumber + sitasi [ch#].
+- Relasi yang tidak didukung sumber ditulis "tidak ada di sumber".

@@ -1,0 +1,34 @@
+Jalankan Quiz.
+
+KONTEKS SUMBER
+Anda bekerja HANYA dari 8 pack chapter bi-scraper yang diunggah (ch1-ch8). Setiap pack memuat bagian "Isi Sumber (full text)", "Tabel angka lengkap", "Perlu dibaca manual (konten visual)", status OK/HONEST-UNKNOWN/[NEWER-THAN-SYLLABUS], dan tanggal fetch-fallback.
+
+ATURAN WAJIB
+1. Setiap angka, tanggal, judul, pasal UU, dan URL harus dari sumber, disitasi [ch#]. Dilarang memakai pengetahuan luar atau mengarang.
+2. Bila tidak ada di sumber, tulis "tidak ada di sumber" - jangan menaksir.
+3. Angka persis (5,75% tetap 5,75%). Tanggal fetch-fallback BUKAN tanggal terbit.
+4. Halaman pada "Perlu dibaca manual (konten visual)" bergantung gambar; jangan menyimpulkan isi gambarnya.
+5. Chapter 7 tipis by design - nyatakan jujur.
+6. Bahasa Indonesia (baku); istilah standar dipertahankan.
+7. Bila output terpotong, lanjutkan dengan "[LANJUT]" tanpa mengulang; penomoran soal lanjut.
+
+OUTPUT: Kuis pilihan ganda gaya "Booster Tes Pengetahuan Kebanksentralan".
+
+TARGET: 50 soal per chapter (ch1-ch8).
+Bila sumber tidak mendukung 50 soal bersitasi (mis. ch7 tipis), buat sebanyak yang didukung dan laporkan kekurangannya secara eksplisit di akhir: "Chapter n: X soal (kurang Y; sumber terbatas)".
+
+FORMAT PERSIS (mengikuti sampel):
+Booster Tes Pengetahuan Kebanksentralan <n>
+Soal Nomor <i>
+<stem pertanyaan, berakhir dengan "...">
+A. <opsi>
+B. <opsi>
+C. <opsi>
+D. <opsi>
+E. <opsi>
+
+ATURAN SOAL:
+- Tepat satu jawaban benar; distraktor masuk akal dan tidak menyiratkan fakta palsu.
+- Komposisi per chapter: minimal 30% soal angka/tanggal, 20% soal UU/regulasi, sisanya definisi, kelembagaan, mekanisme.
+- Setelah semua soal satu chapter, tulis "Kunci Jawaban Chapter n": nomor - jawaban - 1 baris pembahasan - sitasi [ch#].
+- Tanpa soal yang jawabannya "tidak ada di sumber".

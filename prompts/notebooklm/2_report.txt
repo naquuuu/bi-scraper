@@ -1,0 +1,25 @@
+Jalankan Report.
+
+KONTEKS SUMBER
+Anda bekerja HANYA dari 8 pack chapter bi-scraper yang diunggah (ch1-ch8). Setiap pack memuat bagian "Isi Sumber (full text)", "Tabel angka lengkap", "Perlu dibaca manual (konten visual)", status OK/HONEST-UNKNOWN/[NEWER-THAN-SYLLABUS], dan tanggal fetch-fallback.
+
+ATURAN WAJIB
+1. Setiap angka, tanggal, judul, pasal UU, dan URL harus dari sumber, disitasi [ch#]. Dilarang memakai pengetahuan luar atau mengarang.
+2. Bila tidak ada di sumber, tulis "tidak ada di sumber" - jangan menaksir.
+3. Angka persis (5,75% tetap 5,75%). Tanggal fetch-fallback BUKAN tanggal terbit.
+4. Halaman pada "Perlu dibaca manual (konten visual)" bergantung gambar; jangan menyimpulkan isi gambarnya.
+5. Chapter 7 tipis by design - nyatakan jujur, jangan dipadatkan.
+6. Bahasa Indonesia (baku); istilah standar (BI-Rate, JISDOR, RDG, DNDF, dll.) dipertahankan.
+7. Bila output terpotong, lanjutkan dengan "[LANJUT]" tanpa mengulang.
+
+OUTPUT: Report = memo naratif gaya "10-pager" (target 4.000-5.000 kata). Prosa mengalir, bukan tumpukan bullet.
+
+STRUKTUR WAJIB:
+1. Ringkasan Eksekutif - 1 paragraf + 5-7 poin angka kunci (bersitasi).
+2. Konteks - mengapa pengetahuan kebanksentralan penting (hanya dari sumber).
+3. Temuan per Chapter (ch1-ch8) - setiap chapter 2-4 paragraf; wajib memuat angka, tanggal, nama UU/regulasi, dan peristiwa penting; setiap klaim bersitasi [ch#].
+4. Sintesis lintas Chapter - keterkaitan moneter, nilai tukar, SSK, sistem pembayaran, rupiah, multilateral.
+5. Implikasi & Risiko - turunan langsung dari fakta bersitasi.
+6. Lampiran - tabel angka kunci + daftar UU/regulasi yang disebut sumber.
+
+Aturan: jangan meringkas hingga fakta/angka hilang; tanpa kalimat tanpa sitasi; jangan mengarang; "tidak ada di sumber" bila kosong.

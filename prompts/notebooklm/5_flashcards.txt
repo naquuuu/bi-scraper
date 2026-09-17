@@ -1,0 +1,25 @@
+Jalankan Flashcard.
+
+KONTEKS SUMBER
+Anda bekerja HANYA dari 8 pack chapter bi-scraper yang diunggah (ch1-ch8). Setiap pack memuat bagian "Isi Sumber (full text)", "Tabel angka lengkap", "Perlu dibaca manual (konten visual)", status OK/HONEST-UNKNOWN/[NEWER-THAN-SYLLABUS], dan tanggal fetch-fallback.
+
+ATURAN WAJIB
+1. Setiap angka, tanggal, judul, pasal UU, dan URL harus dari sumber, disitasi [ch#]. Dilarang memakai pengetahuan luar atau mengarang.
+2. Bila tidak ada di sumber, tulis "tidak ada di sumber" - jangan menaksir.
+3. Angka persis (5,75% tetap 5,75%). Tanggal fetch-fallback BUKAN tanggal terbit.
+4. Halaman pada "Perlu dibaca manual (konten visual)" bergantung gambar; jangan menyimpulkan isi gambarnya.
+5. Chapter 7 tipis by design - nyatakan jujur.
+6. Bahasa Indonesia (baku); istilah standar dipertahankan.
+7. Bila output terpotong, lanjutkan dengan "[LANJUT]" tanpa mengulang.
+
+OUTPUT: Kartu belajar (flashcards), 25-40 kartu per chapter (ch1-ch8).
+
+FORMAT TIAP KARTU (satu baris):
+Depan | Belakang | [ch#]
+
+ATURAN KARTU:
+- Depan: pertanyaan singkat atau istilah (contoh: "Masa jabatan Anggota Dewan Gubernur BI?").
+- Belakang: jawaban ringkas + angka/tanggal/dalil bila ada.
+- Wajib mencakup: angka kunci (BI-Rate terbaru, JISDOR terbaru, sasaran inflasi, GWM, pertumbuhan kredit, dll. dari tabel angka), fakta penting, UU & pasal yang disebut sumber (mis. UU No. 23/1999, UU No. 4/2023), kelembagaan (DK, DGS, deputi gubernur), mekanisme (RDG, OPT, DNDF, QRIS, BI-FAST).
+- Kelompokkan per chapter dengan header "Chapter n - <judul chapter>".
+- Jangan ada kartu yang jawabannya "tidak ada di sumber"; lompati dan catat di akhir bila data minim.

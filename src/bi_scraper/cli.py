@@ -896,10 +896,12 @@ def index(
 def export_notebook_command(
     chapter: str = typer.Option("all", "--chapter", help="1-8, comma list, or 'all'"),
     txt: bool = typer.Option(
-        False, "--txt", help="Also write plain-text (.txt) packs for upload"
+        True,
+        "--txt/--no-txt",
+        help="Write plain-text packs too (default: both .md and .txt)",
     ),
 ) -> None:
-    """Write NotebookLM-ready Markdown study packs (one per chapter)."""
+    """Write NotebookLM-ready study packs (both .md and .txt by default)."""
 
     settings = get_settings()
     store = _open_store(settings)

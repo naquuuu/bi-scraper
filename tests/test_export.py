@@ -69,6 +69,14 @@ def test_notebook_includes_full_table_and_text(store, settings):
     assert "_(konten belum di-scrape; metadata saja)_" in text
 
 
+def test_notebook_writes_txt_by_default(store, settings):
+    path = export_notebook(store, get_chapter(1), settings)
+    assert path.is_file()
+    txt_path = path.with_suffix(".txt")
+    assert txt_path.is_file()
+    assert "##" not in txt_path.read_text(encoding="utf-8")
+
+
 def test_notebook_visual_section_and_txt(store, settings):
     store.add_document(
         chapter=1,

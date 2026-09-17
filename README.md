@@ -50,8 +50,8 @@ bi-scraper ingest-pdf --chapter 5 --path "<file.pdf>" --url <canonical-url>  # l
 bi-scraper audit-visuals                  # flag image-heavy pages for manual reading (no network)
 bi-scraper ingest-inbox                   # tag data/inbox/*.md chapters 1-8 and index alongside corpus
 bi-scraper index --rebuild                # rebuild the FTS5 index
-bi-scraper export-notebook --chapter 2    # one pack per chapter (full text + tables)
-bi-scraper export-notebook --chapter 2 --txt  # also write plain-text packs for NotebookLM upload
+bi-scraper export-notebook --chapter 2    # packs: .md + .txt written together (full text + tables)
+bi-scraper export-notebook --chapter 2 --no-txt  # markdown only (rare; default is both)
 bi-scraper export-portfolio --chapter 2   # public-data-only charts + my analysis
 bi-scraper coverage                       # chapter vs doc count vs newest date (exit 1 on FAIL)
 bi-scraper search "inflasi"               # FTS5 full-text search across public docs + my notes

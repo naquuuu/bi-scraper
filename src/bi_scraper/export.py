@@ -134,12 +134,13 @@ def export_notebook(
     chapter: Chapter,
     settings: Settings,
     now: datetime | None = None,
-    write_txt: bool = False,
+    write_txt: bool = True,
 ) -> Path:
     """Write one NotebookLM-ready Markdown study pack for a chapter.
 
-    With ``write_txt`` a plain-text sibling is written as well (markdown
-    stripped) for easier NotebookLM uploads.
+    Both formats are written by default: the `.md` pack and its plain-text
+    sibling (markdown stripped). Keep them in sync by always exporting in one
+    run — set ``write_txt=False`` only for tests or explicit markdown-only use.
     """
 
     status = _chapter_status(store, chapter, settings, now)

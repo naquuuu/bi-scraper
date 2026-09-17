@@ -129,6 +129,12 @@ def _warning_lines(status: CoverageStatus) -> list[str]:
     return warnings
 
 
+def notebook_txt_path(settings: Settings, md_path: Path) -> Path:
+    """Plain-text sibling path for a notebook pack (separate upload folder)."""
+
+    return settings.exports_dir / "notebook_txt" / md_path.with_suffix(".txt").name
+
+
 def export_notebook(
     store: StudyStore,
     chapter: Chapter,
@@ -138,9 +144,10 @@ def export_notebook(
 ) -> Path:
     """Write one NotebookLM-ready Markdown study pack for a chapter.
 
-    Both formats are written by default: the `.md` pack and its plain-text
-    sibling (markdown stripped). Keep them in sync by always exporting in one
-    run — set ``write_txt=False`` only for tests or explicit markdown-only use.
+    Both formats are written by default in the same run: the `.md` pack in
+    ``exports/notebook/`` and the markdown-stripped `.txt` in
+    ``exports/notebook_txt/`` (upload folder). Never update one without the
+    other — ``write_txt=False`` is for tests only.
     """
 
     status = _chapter_status(store, chapter, settings, now)
@@ -240,9 +247,9 @@ def export_notebook(
     body = "\n".join(lines)
     out_path.write_text(body, encoding="utf-8")
     if write_txt:
-        out_path.with_suffix(".txt").write_text(
-            markdown_to_plain(body), encoding="utf-8"
-        )
+        txt_path = notebook_txt_path(settings, out_path)
+        txt_path.parent.mkdir(parents=True, exist_ok=True)
+        txt_path.write_text(markdown_to_plain(body), encoding="utf-8")
     return out_path
 
 

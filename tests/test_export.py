@@ -4,7 +4,12 @@
 from __future__ import annotations
 
 from bi_scraper.chapter_map import get_chapter
-from bi_scraper.export import export_notebook, export_portfolio, markdown_to_plain
+from bi_scraper.export import (
+    export_notebook,
+    export_portfolio,
+    markdown_to_plain,
+    notebook_txt_path,
+)
 
 
 def test_notebook_header_flags_and_my_notes(store, settings):
@@ -72,8 +77,10 @@ def test_notebook_includes_full_table_and_text(store, settings):
 def test_notebook_writes_txt_by_default(store, settings):
     path = export_notebook(store, get_chapter(1), settings)
     assert path.is_file()
-    txt_path = path.with_suffix(".txt")
+    assert path.parent.name == "notebook"
+    txt_path = notebook_txt_path(settings, path)
     assert txt_path.is_file()
+    assert txt_path.parent.name == "notebook_txt"
     assert "##" not in txt_path.read_text(encoding="utf-8")
 
 
@@ -93,7 +100,7 @@ def test_notebook_visual_section_and_txt(store, settings):
     assert "## Perlu dibaca manual (konten visual)" in text
     assert "(gambar: 5)" in text
 
-    txt_path = path.with_suffix(".txt")
+    txt_path = notebook_txt_path(settings, path)
     assert txt_path.is_file()
     plain = txt_path.read_text(encoding="utf-8")
     assert "##" not in plain

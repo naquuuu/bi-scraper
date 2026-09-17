@@ -18,6 +18,7 @@ from .chapter_map import Chapter, get_chapter, resolve_chapter_selector
 from .config import FULL_START_DEFAULT, Settings, get_settings, load_hub_env_by_reference
 from .export import export_notebook as _export_notebook
 from .export import export_portfolio as _export_portfolio
+from .export import notebook_txt_path as _notebook_txt_path
 from .freshness import coverage_failures, coverage_statuses
 from .http_client import PoliteClient
 from .inbox import ingest_inbox as _ingest_inbox
@@ -910,7 +911,9 @@ def export_notebook_command(
             path = _export_notebook(store, selected, settings, write_txt=txt)
             typer.echo(f"ch{selected.id}: wrote {path}")
             if txt:
-                typer.echo(f"ch{selected.id}: wrote {path.with_suffix('.txt')}")
+                typer.echo(
+                    f"ch{selected.id}: wrote {_notebook_txt_path(settings, path)}"
+                )
     finally:
         store.close()
 

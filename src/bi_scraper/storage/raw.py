@@ -26,11 +26,13 @@ def save_raw(
     body: bytes,
     fetched_at: str | None = None,
     default_suffix: str = ".html",
+    filename: str | None = None,
 ) -> Path:
     """Write a raw snapshot and return its path.
 
-    ``default_suffix`` controls the extension for extension-less URLs
-    (``.pdf`` for PDF snapshots, ``.html`` otherwise).
+    ``filename`` overrides the slug derived from ``url`` (used for local
+    file ingests); ``default_suffix`` controls the extension for
+    extension-less URLs (``.pdf`` for PDF snapshots, ``.html`` otherwise).
     """
 
     stamp = (
@@ -39,6 +41,10 @@ def save_raw(
     ).replace(":", "").replace("-", "")
     chapter_dir = Path(raw_dir) / f"ch{chapter}"
     chapter_dir.mkdir(parents=True, exist_ok=True)
-    target = chapter_dir / f"{stamp}_{_slug_from_url(url, default_suffix)}"
+    if filename:
+        safe_name = _SAFE_RE.sub("_", filename)[:120] or "file"
+        target = chapter_dir / f"{stamp}_{safe_name}"
+    else:
+        target = chapter_dir / f"{stamp}_{_slug_from_url(url, default_suffix)}"
     target.write_bytes(body)
     return target

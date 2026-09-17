@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 import typer
 
 from . import config
-from .chapter_map import Chapter, resolve_chapter_selector
+from .chapter_map import Chapter, get_chapter, resolve_chapter_selector
 from .config import FULL_START_DEFAULT, Settings, get_settings, load_hub_env_by_reference
 from .export import export_notebook as _export_notebook
 from .export import export_portfolio as _export_portfolio
@@ -31,7 +31,7 @@ from .parsers.bi_rate import (
 )
 from .parsers.generic import parse_indicator_rows, parse_page
 from .parsers.links import extract_internal_links
-from .parsers.pdf import extract_pdf_text
+from .parsers.pdf import PdfExtractionError, extract_pdf
 from .parsers.press_release import parse_press_release_listing
 from .parsers.visual import (
     content_image_srcs,
@@ -54,6 +54,9 @@ from .storage.sqlite_store import StudyStore
 MAX_CONTENT_CHARS = 200_000
 # Per-request override for PDF downloads only (large binary files); never global.
 PDF_REQUEST_TIMEOUT = 30.0
+# Below this text yield a PDF is treated as scanned/image-only: flagged for
+# manual reading instead of trusted as text.
+MIN_PDF_CHARS_PER_PAGE = 200
 
 app = typer.Typer(
     add_completion=False,
@@ -311,6 +314,28 @@ def _fetch_bi_rate_form(
         page_number += 1
 
 
+def _pdf_text_and_flag(data: bytes) -> tuple[str, bool, int]:
+    """Extract PDF text and decide whether yield is too low to trust.
+
+    Returns the full text (never truncated), a visual flag for scanned /
+    image-only PDFs, and the page count. Empty text gets an explicit
+    manual-read placeholder.
+    """
+
+    extraction = extract_pdf(data)
+    low_yield = (
+        not extraction.text.strip()
+        or extraction.chars_per_page < MIN_PDF_CHARS_PER_PAGE
+    )
+    if extraction.text.strip():
+        return extraction.text, low_yield, extraction.pages
+    return (
+        f"(PDF tanpa lapisan teks; {extraction.pages} halaman - baca manual)",
+        True,
+        extraction.pages,
+    )
+
+
 def _hub_prefix(source: Source) -> str:
     """Path prefix that limits which links a hub crawl may follow."""
 
@@ -329,8 +354,10 @@ def _fetch_pdf_source(
     chapter: Chapter,
     summary: FetchSummary,
 ) -> None:
-    """Fetch one public PDF and store its extracted text (never decrypted)."""
+    """Fetch one public PDF and store its full extracted text (never decrypted)."""
 
+    if source.url in store.all_public_urls(chapter.id):
+        return  # already stored (e.g. ingested locally) - do not re-download
     response = client.get(source.url, timeout=PDF_REQUEST_TIMEOUT)  # type: ignore[attr-defined]
     if response.status_code != 200:
         raise RuntimeError(f"HTTP {response.status_code}")
@@ -341,9 +368,7 @@ def _fetch_pdf_source(
         response.content,
         default_suffix=".pdf",
     )
-    text = extract_pdf_text(response.content)
-    if not text.strip():
-        raise RuntimeError("no extractable text")
+    text, low_yield, _pages = _pdf_text_and_flag(response.content)
     store.add_document(
         chapter=chapter.id,
         url=source.url,
@@ -351,6 +376,7 @@ def _fetch_pdf_source(
         content=text,
         doc_kind="web_pdf",
         raw_path=str(raw_path),
+        visual_flag=1 if low_yield else 0,
     )
     summary.fetched += 1
 
@@ -384,6 +410,8 @@ def _fetch_hub(
         pages += 1
         try:
             if url.lower().endswith(".pdf"):
+                if url in known_urls:
+                    continue  # already stored - never re-download large PDFs
                 response = client.get(url, timeout=PDF_REQUEST_TIMEOUT)  # type: ignore[attr-defined]
                 if response.status_code != 200:
                     raise RuntimeError(f"HTTP {response.status_code}")
@@ -394,18 +422,18 @@ def _fetch_hub(
                     response.content,
                     default_suffix=".pdf",
                 )
-                text = extract_pdf_text(response.content)
-                if url not in known_urls:
-                    store.add_document(
-                        chapter=chapter.id,
-                        url=url,
-                        title=url.rsplit("/", 1)[-1],
-                        content=text,
-                        doc_kind="web_pdf",
-                        raw_path=str(raw_path),
-                    )
-                    known_urls.add(url)
-                    summary.fetched += 1
+                text, low_yield, _pages = _pdf_text_and_flag(response.content)
+                store.add_document(
+                    chapter=chapter.id,
+                    url=url,
+                    title=url.rsplit("/", 1)[-1],
+                    content=text,
+                    doc_kind="web_pdf",
+                    raw_path=str(raw_path),
+                    visual_flag=1 if low_yield else 0,
+                )
+                known_urls.add(url)
+                summary.fetched += 1
                 continue
             response = client.get(url)  # type: ignore[attr-defined]
             if response.status_code != 200:
@@ -441,6 +469,69 @@ def _fetch_hub(
                         queue.append((link, depth + 1))
         except Exception as exc:  # one bad page never kills the crawl
             summary.failures.append(f"{url}: {exc}")
+
+
+@dataclass
+class IngestPdfResult:
+    chapter: int
+    path: Path
+    pages: int
+    chars: int
+    low_yield: bool
+    inserted: bool
+    url: str
+    raw_path: Path
+
+
+def ingest_pdf_file(
+    *,
+    store: StudyStore,
+    settings: Settings,
+    chapter: Chapter,
+    path: Path,
+    url: str | None = None,
+    title: str | None = None,
+    doc_date: str | None = None,
+) -> IngestPdfResult:
+    """Ingest one locally downloaded public PDF into a chapter (no network).
+
+    Stores the full extracted text (never truncated), copies the original into
+    ``data/raw/{chapter}/`` and flags scanned/image-only PDFs for manual read.
+    """
+
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"PDF not found: {path}")
+    data = path.read_bytes()
+    text, low_yield, extraction_pages = _pdf_text_and_flag(data)
+    raw_path = save_raw(
+        settings.raw_dir,
+        chapter.id,
+        url or f"local://{path.name}",
+        data,
+        default_suffix=".pdf",
+        filename=path.name,
+    )
+    inserted = store.add_document(
+        chapter=chapter.id,
+        url=url or f"local://{path.name}",
+        title=title or path.stem,
+        content=text,
+        doc_kind="web_pdf",
+        doc_date=doc_date,
+        raw_path=str(raw_path),
+        visual_flag=1 if low_yield else 0,
+    )
+    return IngestPdfResult(
+        chapter=chapter.id,
+        path=path,
+        pages=extraction_pages,
+        chars=len(text),
+        low_yield=low_yield,
+        inserted=inserted,
+        url=url or f"local://{path.name}",
+        raw_path=raw_path,
+    )
 
 
 @dataclass
@@ -547,7 +638,8 @@ def run_enrich(
                         response.content,
                         default_suffix=".pdf",
                     )
-                    text = extract_pdf_text(response.content)
+                    text, visual_heavy, _pages = _pdf_text_and_flag(response.content)
+                    image_count = 0
                 else:
                     response = client.get(url)  # type: ignore[attr-defined]
                     if response.status_code != 200:
@@ -561,10 +653,9 @@ def run_enrich(
                 if not text.strip():
                     raise RuntimeError("no extractable text")
                 store.update_document_content(int(row["id"]), text, str(raw_path))
-                if not is_pdf:
-                    store.set_visual_flags(
-                        int(row["id"]), image_count=image_count, flagged=visual_heavy
-                    )
+                store.set_visual_flags(
+                    int(row["id"]), image_count=image_count, flagged=visual_heavy
+                )
                 summary.updated += 1
             except Exception as exc:  # one bad URL never kills the run
                 summary.failures.append(f"{url}: {exc}")
@@ -686,6 +777,56 @@ def enrich(
         for failure in summary.failures:
             typer.echo(f"  [warn] {failure}")
     typer.echo(f"enrich complete: {updated_total} document(s) with full text")
+
+
+@app.command("ingest-pdf")
+def ingest_pdf_command(
+    chapter: int = typer.Option(..., "--chapter", help="Target chapter (1-8)"),
+    path: str = typer.Option(
+        ..., "--path", help="Path to a locally downloaded public PDF"
+    ),
+    url: Optional[str] = typer.Option(
+        None, "--url", help="Canonical bi.go.id URL for provenance"
+    ),
+    title: Optional[str] = typer.Option(None, "--title", help="Document title"),
+    doc_date: Optional[str] = typer.Option(
+        None, "--date", help="Publish date YYYY-MM-DD if known"
+    ),
+) -> None:
+    """Ingest a locally downloaded public PDF (for server-blocked downloads)."""
+
+    settings = get_settings()
+    try:
+        selected = get_chapter(chapter)
+    except KeyError as exc:
+        raise typer.BadParameter("chapter must be 1-8") from exc
+    if doc_date:
+        _parse_date_option(doc_date, "--date")
+    store = _open_store(settings)
+    try:
+        result = ingest_pdf_file(
+            store=store,
+            settings=settings,
+            chapter=selected,
+            path=Path(path),
+            url=url,
+            title=title,
+            doc_date=doc_date,
+        )
+    finally:
+        store.close()
+    status = "stored" if result.inserted else "skipped (already indexed)"
+    yield_note = (
+        "LOW TEXT YIELD - flagged for manual read"
+        if result.low_yield
+        else "text OK"
+    )
+    typer.echo(
+        f"ch{result.chapter}: {result.path.name} -> {status}; "
+        f"pages={result.pages} chars={result.chars} ({yield_note})"
+    )
+    typer.echo(f"  url: {result.url}")
+    typer.echo(f"  raw: {result.raw_path}")
 
 
 @app.command("audit-visuals")

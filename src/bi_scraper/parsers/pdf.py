@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from io import BytesIO
 
 
@@ -10,8 +11,20 @@ class PdfExtractionError(RuntimeError):
     """Raised when a PDF cannot be read without bypassing protections."""
 
 
-def extract_pdf_text(data: bytes) -> str:
-    """Extract text from a public PDF.
+@dataclass(frozen=True)
+class PdfExtraction:
+    text: str
+    pages: int
+
+    @property
+    def chars_per_page(self) -> float:
+        if self.pages <= 0:
+            return 0.0
+        return len(self.text) / self.pages
+
+
+def extract_pdf(data: bytes) -> PdfExtraction:
+    """Extract full text + page count from a public PDF.
 
     Encrypted/protected files raise ``PdfExtractionError`` and are skipped —
     this tool never decrypts or bypasses PDF protection.
@@ -36,4 +49,11 @@ def extract_pdf_text(data: bytes) -> str:
             pages.append(page.extract_text() or "")
         except Exception:
             pages.append("")
-    return "\n\n".join(part.strip() for part in pages if part.strip())
+    text = "\n\n".join(part.strip() for part in pages if part.strip())
+    return PdfExtraction(text=text, pages=len(reader.pages))
+
+
+def extract_pdf_text(data: bytes) -> str:
+    """Backward-compatible helper returning just the extracted text."""
+
+    return extract_pdf(data).text

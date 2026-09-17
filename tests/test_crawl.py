@@ -9,9 +9,9 @@ from pathlib import Path
 import httpx
 
 from bi_scraper.chapter_map import get_chapter
-from bi_scraper.cli import FetchSummary, _fetch_hub
+from bi_scraper.cli import FetchSummary, _fetch_hub, _fetch_pdf_source
 from bi_scraper.http_client import AllowAllRobots, PoliteClient
-from bi_scraper.sources import KIND_HUB, Source
+from bi_scraper.sources import KIND_HUB, KIND_PDF, Source
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -128,6 +128,31 @@ def test_hub_crawl_is_idempotent(store, settings):
     )
     assert second.fetched == 0  # nothing new on the second run
     assert store.doc_count(6, source_type="public") == 2  # root + child only (cap 2)
+
+
+def test_pdf_source_skips_already_stored_url(store, settings):
+    url = "https://www.bi.go.id/id/publikasi/kajian/Documents/bspi.pdf"
+    store.add_document(
+        chapter=5, url=url, title="BSPI", content="text", doc_kind="web_pdf"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+        raise AssertionError("no HTTP expected for an already-stored PDF")
+
+    source = Source(5, "BSPI 2030 (PDF)", url, KIND_PDF)
+    summary = FetchSummary(
+        chapter=5, name=source.name, mode="incremental", start="2026-09-01", end="2026-09-17"
+    )
+    _fetch_pdf_source(
+        store=store,
+        settings=settings,
+        client=_offline_client(settings, handler),
+        source=source,
+        chapter=get_chapter(5),
+        summary=summary,
+    )
+    assert summary.fetched == 0
+    assert store.doc_count(5, source_type="public") == 1
 
 
 def test_hub_crawl_respects_page_cap(store, settings):

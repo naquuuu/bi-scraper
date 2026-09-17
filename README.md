@@ -46,6 +46,7 @@ bi-scraper fetch --chapter 2 --start-date 2026-01-01 --end-date 2026-09-01
 bi-scraper fetch --chapter 2 --full       # explicit full refetch (ignores stored newest date)
 bi-scraper enrich                         # scrape the full text behind stored links (HTML + public PDFs)
 bi-scraper enrich --chapter 2 --limit 5   # bounded enrichment run
+bi-scraper ingest-pdf --chapter 5 --path "<file.pdf>" --url <canonical-url>  # local PDF (server-blocked download)
 bi-scraper audit-visuals                  # flag image-heavy pages for manual reading (no network)
 bi-scraper ingest-inbox                   # tag data/inbox/*.md chapters 1-8 and index alongside corpus
 bi-scraper index --rebuild                # rebuild the FTS5 index
@@ -141,6 +142,10 @@ to text, and indexed alongside the public corpus.
 - **PDF enrichment:** `enrich` extracts text from **public** bi.go.id PDFs with
   `pypdf` using a 30s per-request timeout for PDF downloads only. Encrypted or
   protected PDFs are **skipped and reported — never decrypted or bypassed**.
+  PDFs whose text yield is too low (<200 chars/page, e.g. scanned documents) are
+  stored with a manual-read placeholder and flagged as visual-heavy. When the BI
+  server blocks a large download, `ingest-pdf` imports a locally downloaded copy
+  (full text, byte-identical raw snapshot in `data/raw/`).
 - **Hub crawling:** `hub` sources follow only in-section links (path prefix) up
   to `max_depth` (2), capped at 60 pages per hub, same bi.go.id host; asset,
   query-string and already-stored links are skipped. PDFs discovered under the

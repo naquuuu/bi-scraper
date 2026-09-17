@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from pypdf import PdfWriter
 
-from bi_scraper.parsers.pdf import PdfExtractionError, extract_pdf_text
+from bi_scraper.parsers.pdf import PdfExtractionError, extract_pdf, extract_pdf_text
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -18,6 +18,14 @@ def test_extracts_text_from_public_pdf():
     data = (FIXTURES / "sample.pdf").read_bytes()
     text = extract_pdf_text(data)
     assert "Hello BI Scraper PDF" in text
+
+
+def test_extract_pdf_reports_pages_and_yield():
+    data = (FIXTURES / "sample.pdf").read_bytes()
+    extraction = extract_pdf(data)
+    assert extraction.pages == 1
+    assert "Hello BI Scraper PDF" in extraction.text
+    assert extraction.chars_per_page > 0
 
 
 def test_encrypted_pdf_is_refused_never_decrypted():
